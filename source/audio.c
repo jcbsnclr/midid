@@ -1,13 +1,40 @@
 #include "jack/jack.h"
 #include "jack/midiport.h"
 #include "jack/types.h"
+#include "math.h"
 #include <audio.h>
 #include <log.h>
 #include <string.h>
 #include <synth.h>
 
+static void insert_voice(state_t *st, note_state_t voice) {
+    voice.on = true;
+    st->active[st->active_recent++] = voice;
+    st->active_recent %= VOICES;
+}
+
+static void log_voices(state_t *st) {
+    log_info("voices:");
+    for (size_t i = 0; i < VOICES; i++) {
+        note_state_t voice = st->active[i];
+        log_line("[%u] = { .note = %u, .velocity = %u, .on = %s }", i, voice.note, voice.velocity, voice.on ? "true" : "false");
+    }
+}
+
+static void filter_voice(state_t *st, uint8_t note) {
+    for (size_t i = 0; i < VOICES; i++)
+        if (st->active[i].note == note)
+            st->active[i].on = false;
+}
+
 static void jack_error_report(const char *msg) {
     log_trace("JACK: %s", msg);
+}
+
+static int jack_xrun(void *arg) {
+    (void)arg;
+    log_warn("xrun detected");
+    return 0;
 }
 
 static int process(jack_nframes_t nframes, void *arg) {
@@ -20,8 +47,6 @@ static int process(jack_nframes_t nframes, void *arg) {
 
     jack_midi_event_t ev;
 
-    log_trace("nframes = %d", nframes);    
-
     // if (ev_count != 0) {
     //     log_trace("got %u events", ev_count);
 
@@ -32,31 +57,44 @@ static int process(jack_nframes_t nframes, void *arg) {
     // }
 
     jack_midi_event_get(&ev, input_buf, 0);
-
+        
     for (size_t i = 0; i < nframes; i++) {
-        if (ev.time == i && ev_index < ev_count) {
-            if ((ev.buffer[0] & 0xf0) == 0x90) {
-                st->note = ev.buffer[1];
-                st->note_on = 1.0;
-            } else if ((ev.buffer[0] & 0xf0) == 0x80) {
-                st->note = ev.buffer[1];
-                st->note_on = 0.0;
+        if (ev_index < ev_count) {
+            uint8_t kind = ev.buffer[MIDI_STATUS] & 0xf0;
+            uint8_t chan = ev.buffer[MIDI_STATUS] & 0x0f;
+            uint8_t note = ev.buffer[MIDI_NOTE];
+            uint8_t vel = ev.buffer[MIDI_VEL];
+            (void)chan;
+
+            if (chan == st->channel && (kind == NOTE_OFF || (kind == NOTE_ON && vel == 0))) {
+                log_info("note off (note = %d, vel = %d)", note, vel);
+                filter_voice(st, note);
+                // log_voices(st);
+            } else if (kind == NOTE_ON && chan == st->channel) {
+                log_info("note on (note = %d, vel = %d)", note, vel);
+                note_state_t voice = {
+                    .note = note,
+                    .velocity = vel,
+                    .on = true,
+                    .phase = 0.0,
+                    // .idx = st->sample + i
+                    .idx = 0
+                };             
+                insert_voice(st, voice);
+                // log_voices(st);
+            } else if (kind == CONTROL && chan == st->channel) {
+                // log_info("midi control (controller = %u, value = %u)", ev.buffer[MIDI_CONTROLLER], ev.buffer[MIDI_VALUE]);
             }
-            if (ev_index++ < ev_count)
+
+            ev_index++;
+            if (ev_index < ev_count)
                 jack_midi_event_get(&ev, input_buf, ev_index);
         }
 
-        output_buf[i] = synth_sample(st, st->sample + i, 0.5, 0.2) * st->note_on;
-        st->note += 3;
-        output_buf[i] += synth_sample(st, st->sample + i, 0.5, 0.3) * st->note_on;
-        st->note += 2;
-        output_buf[i] += synth_sample(st, st->sample + i, 0.5, 0.5) * st->note_on;
-        st->note += 2;
-        output_buf[i] += synth_sample(st, st->sample + i, 0.5, 0.7) * st->note_on;
-        st->note -= 7;
+        (void)log_voices;
 
-        
-        output_buf[i] /= 2;
+        // output_buf[i] = 0.;
+        output_buf[i] = synth_sample(st, st->sample + i, st->volume);
     }
 
     st->sample += nframes;
@@ -98,6 +136,14 @@ result_t state_init(state_t *st) {
 
     jack_set_process_callback(st->client, process, (void*)st);
     jack_set_sample_rate_callback(st->client, srate, (void *)st);
+    jack_set_xrun_callback(st->client, jack_xrun, NULL);
+
+    st->volume = 0.5;
+    st->channel = 0;
+
+
+    st->active_recent = 0;
+    memset(st->active, 0, sizeof(*st->active) * VOICES);
     
     return OK_VAL;
 }

@@ -1,4 +1,3 @@
-#include "jack/types.h"
 #include <jack/jack.h>
 #include <jack/midiport.h>
 

@@ -10,4 +10,4 @@ typedef struct buffer {
     size_t len;
 } buffer_t;
 
-float synth_sample(state_t *st, size_t i, float volume, float phase);
+float synth_sample(state_t *st, size_t idx, float volume);
