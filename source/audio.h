@@ -40,6 +40,7 @@ typedef struct note_state_t {
     uint8_t velocity;
     size_t idx;
     float phase;
+    float start_ramp;
     float ramp;
     note_stage_t stage;
     jack_time_t time;

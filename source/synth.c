@@ -42,33 +42,36 @@ static float sine_wave(state_t *st, size_t i, note_state_t *voice) {
      
      switch (voice->stage) {
           case NOTE_START:
-               voice->ramp = lerp(st, voice, voice->ramp, 1.0, ATTACK_TIME);
+               voice->ramp = lerp(st, voice, voice->start_ramp, 1.0, ATTACK_TIME);
 
                if (voice->time + ATTACK_TIME < st->time) {
                     voice->stage = NOTE_PEAK;
                     voice->time = st->time;
+                    voice->start_ramp = voice->ramp;
                }          
 
                break;
           case NOTE_PEAK:
-               if (voice->time + ADJUST_TIME < st->time) {
-                    voice->ramp = lerp(st, voice, voice->ramp, 1.0, ADJUST_TIME);
-               } else {
-                    voice->ramp = 1.0;
-               }
+               // if (voice->time + ADJUST_TIME < st->time) {
+               //      voice->ramp = lerp(st, voice, voice->ramp, 1.0, ADJUST_TIME);
+               // } else {
+               //      voice->ramp = 1.0;
+               // }
                break;
           case NOTE_DONE:
                // voice->ramp = 1.0 - lerp(st, voice, voice->ramp, 1.0, ATTACK_TIME);
-               voice->ramp = 1.0 - lerp(st, voice, 0.0, 1.0, ATTACK_TIME);
+               voice->ramp = 1.0 - lerp(st, voice, 1.0 - voice->start_ramp, 1.0, ATTACK_TIME);
 
                if (voice->time + ATTACK_TIME < st->time) {
                     voice->stage = NOTE_END;
                     voice->time = st->time;
+                    voice->start_ramp = voice->ramp;
                }          
 
                break;
           default:
                voice->ramp = 0.0;
+               voice->start_ramp = 0.0;
                break;
      }
      

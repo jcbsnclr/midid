@@ -14,6 +14,7 @@ static void insert_voice(state_t *st, note_state_t voice) {
             st->active[i].stage = NOTE_START;
             st->active[i].velocity = voice.velocity;
             st->active[i].time = voice.time;
+            st->active[i].start_ramp = st->active[i].ramp;
             return;
         }    
     }
@@ -35,6 +36,7 @@ static void filter_voice(state_t *st, uint8_t note, note_stage_t stage) {
         if (st->active[i].note == note) {
             st->active[i].time = st->time;
             st->active[i].stage = stage;
+            st->active[i].start_ramp = st->active[i].ramp;
         }
 }
 
@@ -160,7 +162,17 @@ result_t state_init(state_t *st) {
 
 
     st->active_recent = 0;
-    memset(st->active, 0, sizeof(*st->active) * VOICES);
+    for (size_t i = 0; i < VOICES; i++)
+        st->active[i] = (note_state_t){
+            .note = 0,
+            .velocity = 0,
+            .idx = 0,
+            .phase = 0.0,
+            .start_ramp = 0.0,
+            .ramp = 0.0,
+            .stage = NOTE_END,
+            .time = 0
+        };
     
     return OK_VAL;
 }
