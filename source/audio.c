@@ -8,7 +8,16 @@
 #include <synth.h>
 
 static void insert_voice(state_t *st, note_state_t voice) {
-    voice.on = true;
+    voice.stage = NOTE_START;
+    for (size_t i = 0; i < VOICES; i++) {
+        if (st->active[i].note == voice.note) {
+            st->active[i].stage = NOTE_START;
+            st->active[i].velocity = voice.velocity;
+            st->active[i].time = voice.time;
+            return;
+        }    
+    }
+    
     st->active[st->active_recent++] = voice;
     st->active_recent %= VOICES;
 }
@@ -17,14 +26,16 @@ static void log_voices(state_t *st) {
     log_info("voices:");
     for (size_t i = 0; i < VOICES; i++) {
         note_state_t voice = st->active[i];
-        log_line("[%u] = { .note = %u, .velocity = %u, .on = %s }", i, voice.note, voice.velocity, voice.on ? "true" : "false");
+        log_line("[%u] = { .note = %u, .velocity = %u, .stage= %u, .time = %u }", i, voice.note, voice.velocity, voice.stage, voice.time);
     }
 }
 
-static void filter_voice(state_t *st, uint8_t note) {
+static void filter_voice(state_t *st, uint8_t note, note_stage_t stage) {
     for (size_t i = 0; i < VOICES; i++)
-        if (st->active[i].note == note)
-            st->active[i].on = false;
+        if (st->active[i].note == note) {
+            st->active[i].time = st->time;
+            st->active[i].stage = stage;
+        }
 }
 
 static void jack_error_report(const char *msg) {
@@ -39,6 +50,11 @@ static int jack_xrun(void *arg) {
 
 static int process(jack_nframes_t nframes, void *arg) {
     state_t *st = (state_t*)arg;
+
+    jack_nframes_t cur_frames;
+    jack_time_t next_usecs;
+    float period_usecs;
+    jack_get_cycle_times(st->client, &cur_frames, &st->time, &next_usecs, &period_usecs);
     
     void *input_buf = jack_port_get_buffer(st->input, nframes);
     jack_default_audio_sample_t *output_buf = (jack_default_audio_sample_t *)jack_port_get_buffer(st->output, nframes);
@@ -67,16 +83,17 @@ static int process(jack_nframes_t nframes, void *arg) {
             (void)chan;
 
             if (chan == st->channel && (kind == NOTE_OFF || (kind == NOTE_ON && vel == 0))) {
-                log_info("note off (note = %d, vel = %d)", note, vel);
-                filter_voice(st, note);
+                // log_info("note off (note = %d, vel = %d)", note, vel);
+                filter_voice(st, note, NOTE_DONE);
                 // log_voices(st);
             } else if (kind == NOTE_ON && chan == st->channel) {
-                log_info("note on (note = %d, vel = %d)", note, vel);
+                // log_info("note on (note = %d, vel = %d)", note, vel);
                 note_state_t voice = {
                     .note = note,
                     .velocity = vel,
-                    .on = true,
                     .phase = 0.0,
+                    .time = st->time,
+                    .ramp = 0.0,
                     // .idx = st->sample + i
                     .idx = 0
                 };             

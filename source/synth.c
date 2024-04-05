@@ -24,21 +24,76 @@ phase = phase + ((2 * pi * f) / samplerate)
 if phase > (2 * pi) then
       phase = phase - (2 * pi)*/
 
+#define ATTACK_TIME SECS(0.01)
+#define ADJUST_TIME SECS(0.01)
+
+static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_time_t time) {
+     jack_time_t rel_time = st->time - voice->time;
+     float t = (float)rel_time / (float)time;
+
+     return (to - t) * base + t;
+}
+
 static float sine_wave(state_t *st, size_t i, note_state_t *voice) {
-    float hz = powf(2, ((float)voice->note - 69.)/12.) * 440.;
+     float hz = powf(2, ((float)voice->note - 69.)/12.) * 440.;
      (void)st;
      (void)i;
+     // float out = ((float)voice->velocity / 127) * saw(/*i */ voice->phase);
      
-     float out = ((float)voice->velocity / 127) * saw(/*i */ voice->phase);
+     switch (voice->stage) {
+          case NOTE_START:
+               voice->ramp = lerp(st, voice, voice->ramp, 1.0, ATTACK_TIME);
+
+               if (voice->time + ATTACK_TIME < st->time) {
+                    voice->stage = NOTE_PEAK;
+                    voice->time = st->time;
+               }          
+
+               break;
+          case NOTE_PEAK:
+               if (voice->time + ADJUST_TIME < st->time) {
+                    voice->ramp = lerp(st, voice, voice->ramp, 1.0, ADJUST_TIME);
+               } else {
+                    voice->ramp = 1.0;
+               }
+               break;
+          case NOTE_DONE:
+               // voice->ramp = 1.0 - lerp(st, voice, voice->ramp, 1.0, ATTACK_TIME);
+               voice->ramp = 1.0 - lerp(st, voice, 0.0, 1.0, ATTACK_TIME);
+
+               if (voice->time + ATTACK_TIME < st->time) {
+                    voice->stage = NOTE_END;
+                    voice->time = st->time;
+               }          
+
+               break;
+          default:
+               voice->ramp = 0.0;
+               break;
+     }
      
     float step = (hz * 2 * M_PI) / st->srate;
-     voice->phase += step;
+     // voice->phase += step;
 
-     out = sinf(i * step + out);
+     // while (voice->phase >= (2 * M_PI))
+     //      voice->phase -= (2 * M_PI);
+     // while (voice->phase < (2 * M_PI))
+     //      voice->phase += (2 * M_PI);
 
-     if (voice->phase > (2 * M_PI))
-          voice->phase = voice->phase - (2 * M_PI);
-    // return ((float)voice.velocity / 127) * sinf((float)i * step + phase);
+     // // if (voice->phase > (2 * M_PI))
+     // //      voice->phase -= (2 * M_PI);
+
+     // if (voice->stage == NOTE_DONE && fabs(voice->phase) > 0.0001) {
+     //      voice->stage = NOTE_END;          
+     // }
+     // if (voice->stage == NOTE_DONE) 
+     //      voice->stage = NOTE_END;
+
+     float out = sinf(i * step) * voice->ramp;
+
+
+     
+    // return (float)voice.velocity / 127) * sinf((float)i * step + phase);
      (void)square;
      (void)saw;
     return out;
@@ -49,12 +104,12 @@ float synth_sample(state_t *st, size_t idx, float volume) {
      int voices = 0;
      float sample = 0.0;
      for (size_t i = 0; i < VOICES; i++) {
-          if (st->active[i].on) {
-               voices++;
+          note_state_t *voice = &st->active[i];
 
-               sample += sine_wave(st, /*idx -*/ st->active[i].idx, &st->active[i]);
-               st->active[i].idx += 1;
-          }
+          voices++;
+
+          sample += sine_wave(st, /*idx -*/ voice->idx, voice);
+          voice->idx += 1;
      }
      if (voices == 0)
           return 0.0;

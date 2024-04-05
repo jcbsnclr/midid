@@ -26,15 +26,26 @@ typedef enum midi_field_t {
     MIDI_VALUE = 2
 } midi_field_t;
 
+typedef enum note_stage_t {
+    NOTE_START, // start of note (attack phase)
+    NOTE_PEAK, // peak of note
+    NOTE_DONE, // note fading (release phase)
+    NOTE_END  // note finished
+} note_stage_t;
+
+#define SECS(n) ((jack_time_t)(n * 1000000))
+
 typedef struct note_state_t {
     uint8_t note;
     uint8_t velocity;
     size_t idx;
     float phase;
-    bool on;
+    float ramp;
+    note_stage_t stage;
+    jack_time_t time;
 } note_state_t;
 
-#define VOICES 32
+#define VOICES 64
 
 typedef struct state_t {
     jack_client_t *client;
@@ -44,6 +55,7 @@ typedef struct state_t {
     size_t sample;
     uint8_t channel;
     float volume;
+    jack_time_t time;
 
     note_state_t active[VOICES];
     size_t active_recent;
