@@ -24,8 +24,8 @@ phase = phase + ((2 * pi * f) / samplerate)
 if phase > (2 * pi) then
       phase = phase - (2 * pi)*/
 
-#define ATTACK_TIME SECS(0.01)
-#define ADJUST_TIME SECS(0.01)
+#define ATTACK_TIME SECS(1)
+#define ADJUST_TIME SECS(1)
 
 static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_time_t time) {
      jack_time_t rel_time = st->time - voice->time;
