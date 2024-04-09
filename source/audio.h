@@ -8,8 +8,13 @@
 
 #include <stdbool.h>
 
-// TODO: define envelope
-typedef struct envelope_t {} envelope_t;
+#define ENV_SUSTAIN 0
+
+typedef struct env_stage_t {
+    jack_time_t time;
+    float amp;
+    struct env_stage_t *next;
+} env_stage_t;
 
 typedef enum midi_kind_t {
     NOTE_OFF = 0x80,
@@ -42,11 +47,11 @@ typedef struct note_state_t {
     float phase;
     float start_ramp;
     float ramp;
-    note_stage_t stage;
+    env_stage_t *stage;
     jack_time_t time;
 } note_state_t;
 
-#define VOICES 64
+#define VOICES 1
 
 typedef struct state_t {
     jack_client_t *client;
@@ -58,9 +63,13 @@ typedef struct state_t {
     float volume;
     jack_time_t time;
 
+    env_stage_t *env_start;
+    env_stage_t *env_done;
+
     note_state_t active[VOICES];
     size_t active_recent;
 } state_t;
 
 result_t state_init(state_t *st);
 void state_free(state_t *st);
+

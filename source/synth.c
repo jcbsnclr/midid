@@ -34,46 +34,35 @@ static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_t
      return (to - t) * base + t;
 }
 
+static void env_process(state_t *st, note_state_t *voice) {
+     env_stage_t *env = voice->stage;
+     
+     if (env && env->time != ENV_SUSTAIN) {
+          if (voice->start_ramp < env->amp) 
+               voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
+          else 
+               voice->ramp = 1.0 - lerp(st, voice, 1.0 - voice->start_ramp, env->amp, env->time);
+          // voice->ramp = 1.0;
+
+          if (voice->time + env->time < st->time) {
+               voice->stage = env->next;
+               voice->time = st->time;
+               voice->start_ramp = voice->ramp;
+          }
+     } else if (env && env->time == ENV_SUSTAIN) { 
+          voice->ramp = voice->start_ramp;
+     } else if (!env) {
+          voice->ramp = 0.0;
+     }
+}
+
 static float sine_wave(state_t *st, size_t i, note_state_t *voice) {
      float hz = powf(2, ((float)voice->note - 69.)/12.) * 440.;
      (void)st;
      (void)i;
      // float out = ((float)voice->velocity / 127) * saw(/*i */ voice->phase);
      
-     switch (voice->stage) {
-          case NOTE_START:
-               voice->ramp = lerp(st, voice, voice->start_ramp, 1.0, ATTACK_TIME);
-
-               if (voice->time + ATTACK_TIME < st->time) {
-                    voice->stage = NOTE_PEAK;
-                    voice->time = st->time;
-                    voice->start_ramp = voice->ramp;
-               }          
-
-               break;
-          case NOTE_PEAK:
-               // if (voice->time + ADJUST_TIME < st->time) {
-               //      voice->ramp = lerp(st, voice, voice->ramp, 1.0, ADJUST_TIME);
-               // } else {
-               //      voice->ramp = 1.0;
-               // }
-               break;
-          case NOTE_DONE:
-               // voice->ramp = 1.0 - lerp(st, voice, voice->ramp, 1.0, ATTACK_TIME);
-               voice->ramp = 1.0 - lerp(st, voice, 1.0 - voice->start_ramp, 1.0, ATTACK_TIME);
-
-               if (voice->time + ATTACK_TIME < st->time) {
-                    voice->stage = NOTE_END;
-                    voice->time = st->time;
-                    voice->start_ramp = voice->ramp;
-               }          
-
-               break;
-          default:
-               voice->ramp = 0.0;
-               voice->start_ramp = 0.0;
-               break;
-     }
+     env_process(st, voice);
      
     float step = (hz * 2 * M_PI) / st->srate;
      // voice->phase += step;
@@ -92,7 +81,7 @@ static float sine_wave(state_t *st, size_t i, note_state_t *voice) {
      // if (voice->stage == NOTE_DONE) 
      //      voice->stage = NOTE_END;
 
-     float out = sinf(i * step) * voice->ramp;
+     float out = sinf(fmod(i * step, M_PI * 2)) * voice->ramp;
 
 
      
@@ -109,7 +98,8 @@ float synth_sample(state_t *st, size_t idx, float volume) {
      for (size_t i = 0; i < VOICES; i++) {
           note_state_t *voice = &st->active[i];
 
-          voices++;
+          if (voice->stage != NULL)
+               voices++;
 
           sample += sine_wave(st, /*idx -*/ voice->idx, voice);
           voice->idx += 1;

@@ -3,11 +3,8 @@
 #include <stdio.h>
 #include <stddef.h>
 
-#include <audio.h>
+#include <jack/types.h>
 
-typedef struct buffer {
-    float *buf;
-    size_t len;
-} buffer_t;
+#include <audio.h>
 
 float synth_sample(state_t *st, size_t idx, float volume);

@@ -1,42 +1,55 @@
 #include "jack/jack.h"
 #include "jack/midiport.h"
 #include "jack/types.h"
-#include "math.h"
 #include <audio.h>
 #include <log.h>
 #include <string.h>
 #include <synth.h>
 
 static void insert_voice(state_t *st, note_state_t voice) {
-    voice.stage = NOTE_START;
+    bool updated = false;
+    
+    voice.stage = st->env_start;
     for (size_t i = 0; i < VOICES; i++) {
         if (st->active[i].note == voice.note) {
-            st->active[i].stage = NOTE_START;
+            updated = true;
+            st->active[i].stage = st->env_start;
             st->active[i].velocity = voice.velocity;
             st->active[i].time = voice.time;
             st->active[i].start_ramp = st->active[i].ramp;
             return;
         }    
     }
-    
-    st->active[st->active_recent++] = voice;
-    st->active_recent %= VOICES;
+
+    if (!updated) {
+        st->active[st->active_recent++] = voice;
+        st->active_recent %= VOICES;
+    }
 }
 
 static void log_voices(state_t *st) {
     log_info("voices:");
     for (size_t i = 0; i < VOICES; i++) {
         note_state_t voice = st->active[i];
-        log_line("[%u] = { .note = %u, .velocity = %u, .stage= %u, .time = %u }", i, voice.note, voice.velocity, voice.stage, voice.time);
+        log_line("[%u] = { .note = %u, .velocity = %u, .stage= %lx, .time = %ums }", i, voice.note, voice.velocity, voice.stage, voice.time);
     }
 }
 
-static void filter_voice(state_t *st, uint8_t note, note_stage_t stage) {
+static void filter_voice(state_t *st, uint8_t note) {
     for (size_t i = 0; i < VOICES; i++)
         if (st->active[i].note == note) {
             st->active[i].time = st->time;
-            st->active[i].stage = stage;
             st->active[i].start_ramp = st->active[i].ramp;
+            st->active[i].stage = st->env_done;
+
+            // env_stage_t *cur = st->active[i].stage;
+            // while (cur) {
+            //     if (cur->time == 0) {
+            //         cur = cur->next;
+            //         break;
+            //     }
+            //     cur = cur->next;
+            // }            
         }
 }
 
@@ -85,11 +98,11 @@ static int process(jack_nframes_t nframes, void *arg) {
             (void)chan;
 
             if (chan == st->channel && (kind == NOTE_OFF || (kind == NOTE_ON && vel == 0))) {
-                // log_info("note off (note = %d, vel = %d)", note, vel);
-                filter_voice(st, note, NOTE_DONE);
-                // log_voices(st);
+                log_info("note off (note = %d, vel = %d)", note, vel);
+                filter_voice(st, note);
+                log_voices(st);
             } else if (kind == NOTE_ON && chan == st->channel) {
-                // log_info("note on (note = %d, vel = %d)", note, vel);
+                log_info("note on (note = %d, vel = %d)", note, vel);
                 note_state_t voice = {
                     .note = note,
                     .velocity = vel,
@@ -100,7 +113,7 @@ static int process(jack_nframes_t nframes, void *arg) {
                     .idx = 0
                 };             
                 insert_voice(st, voice);
-                // log_voices(st);
+                log_voices(st);
             } else if (kind == CONTROL && chan == st->channel) {
                 // log_info("midi control (controller = %u, value = %u)", ev.buffer[MIDI_CONTROLLER], ev.buffer[MIDI_VALUE]);
             }
@@ -170,7 +183,7 @@ result_t state_init(state_t *st) {
             .phase = 0.0,
             .start_ramp = 0.0,
             .ramp = 0.0,
-            .stage = NOTE_END,
+            .stage = NULL,
             .time = 0
         };
     
