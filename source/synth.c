@@ -31,17 +31,21 @@ static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_t
      jack_time_t rel_time = st->time - voice->time;
      float t = (float)rel_time / (float)time;
 
-     return (to - t) * base + t;
+     // return (to - t) * base + t;
+     // return (to - t) * base + t * to;
+     return (1.0 - t) * base + t * to;
 }
 
 static void env_process(state_t *st, note_state_t *voice) {
      env_stage_t *env = voice->stage;
      
      if (env && env->time != ENV_SUSTAIN) {
-          if (voice->start_ramp < env->amp) 
-               voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
-          else 
-               voice->ramp = 1.0 - lerp(st, voice, 1.0 - voice->start_ramp, env->amp, env->time);
+          // if (voice->start_ramp < env->amp) 
+               // voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
+          // else 
+               // voice->ramp = voice->start_ramp - lerp(st, voice, 1.0 - voice->start_ramp, env->amp, env->time);
+               // voice->ramp = voice->start_ramp - lerp(st, voice, 1.0 - voice->start_ramp, env->amp, env->time);
+          voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
           // voice->ramp = 1.0;
 
           if (voice->time + env->time < st->time) {
@@ -81,7 +85,9 @@ static float sine_wave(state_t *st, size_t i, note_state_t *voice) {
      // if (voice->stage == NOTE_DONE) 
      //      voice->stage = NOTE_END;
 
+     // size_t idx = i % st->srate;
      float out = sinf(fmod(i * step, M_PI * 2)) * voice->ramp;
+     // float out = sinf(idx * step) * voice->ramp;
 
 
      

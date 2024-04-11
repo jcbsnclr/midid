@@ -18,18 +18,22 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    env_stage_t a, s, r;
+    env_stage_t a, d, s, r;
 
     a.amp = 1.0;
-    a.time = SECS(1);
+    a.time = SECS(0.1);
+
+    d.amp = 0.5;
+    d.time = SECS(0.05);
 
     s.amp = 1.0;
     s.time = ENV_SUSTAIN;
 
     r.amp = 0.0;
-    r.time = SECS(1);    
+    r.time = SECS(0.2);    
 
-    a.next = &s;
+    a.next = &d;
+    d.next = &s;
     s.next = &r;
     r.next = NULL;
 

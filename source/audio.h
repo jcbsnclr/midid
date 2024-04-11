@@ -51,7 +51,7 @@ typedef struct note_state_t {
     jack_time_t time;
 } note_state_t;
 
-#define VOICES 1
+#define VOICES 128
 
 typedef struct state_t {
     jack_client_t *client;

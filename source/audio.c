@@ -98,11 +98,11 @@ static int process(jack_nframes_t nframes, void *arg) {
             (void)chan;
 
             if (chan == st->channel && (kind == NOTE_OFF || (kind == NOTE_ON && vel == 0))) {
-                log_info("note off (note = %d, vel = %d)", note, vel);
+                // log_info("note off (note = %d, vel = %d)", note, vel);
                 filter_voice(st, note);
-                log_voices(st);
+                // log_voices(st);
             } else if (kind == NOTE_ON && chan == st->channel) {
-                log_info("note on (note = %d, vel = %d)", note, vel);
+                // log_info("note on (note = %d, vel = %d)", note, vel);
                 note_state_t voice = {
                     .note = note,
                     .velocity = vel,
@@ -113,7 +113,7 @@ static int process(jack_nframes_t nframes, void *arg) {
                     .idx = 0
                 };             
                 insert_voice(st, voice);
-                log_voices(st);
+                // log_voices(st);
             } else if (kind == CONTROL && chan == st->channel) {
                 // log_info("midi control (controller = %u, value = %u)", ev.buffer[MIDI_CONTROLLER], ev.buffer[MIDI_VALUE]);
             }
