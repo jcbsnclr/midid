@@ -5,14 +5,6 @@
 #include <audio.h>
 #include <log.h>
 
-static float square(float x) {
-     return roundf(sin(x));
-}
-
-static float saw(float x) {
-     return x - floorf(x);
-}
-
 /*
 Input: Peak amplitude (A), Frequency (f)
 Output: Amplitude value (y)
@@ -31,8 +23,6 @@ static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_t
      jack_time_t rel_time = st->time - voice->time;
      float t = (float)rel_time / (float)time;
 
-     // return (to - t) * base + t;
-     // return (to - t) * base + t * to;
      return (1.0 - t) * base + t * to;
 }
 
@@ -40,13 +30,7 @@ static void env_process(state_t *st, note_state_t *voice) {
      env_stage_t *env = voice->stage;
      
      if (env && env->time != ENV_SUSTAIN) {
-          // if (voice->start_ramp < env->amp) 
-               // voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
-          // else 
-               // voice->ramp = voice->start_ramp - lerp(st, voice, 1.0 - voice->start_ramp, env->amp, env->time);
-               // voice->ramp = voice->start_ramp - lerp(st, voice, 1.0 - voice->start_ramp, env->amp, env->time);
           voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
-          // voice->ramp = 1.0;
 
           if (voice->time + env->time < st->time) {
                voice->stage = env->next;
@@ -60,45 +44,38 @@ static void env_process(state_t *st, note_state_t *voice) {
      }
 }
 
-static float sine_wave(state_t *st, size_t i, note_state_t *voice) {
-     float hz = powf(2, ((float)voice->note - 69.)/12.) * 440.;
-     (void)st;
-     (void)i;
-     // float out = ((float)voice->velocity / 127) * saw(/*i */ voice->phase);
+static float square(float x) {
+     return sinf(x) > 0.0 ? 1.0 : -1.0;
+}
+
+static float saw(float x) {
+     return 0.0;
+}
+
+typedef float (*wave_fn_t)(float);
+
+static wave_fn_t wave_fn_table[] = {
+     [OSC_SIN] = sinf,
+     [OSC_SQUARE] = square,
+     [OSC_SAW] = saw,
+};
+
+static float gen_wave(osc_t *osc, state_t *st, size_t i, note_state_t *voice) {
+    float hz = powf(2, ((float)voice->note - 69.)/12.) * 440.;
      
-     env_process(st, voice);
-     
+    env_process(st, voice);
+    
+     wave_fn_t fn = wave_fn_table[osc->kind];
+    
     float step = (hz * 2 * M_PI) / st->srate;
-     // voice->phase += step;
-
-     // while (voice->phase >= (2 * M_PI))
-     //      voice->phase -= (2 * M_PI);
-     // while (voice->phase < (2 * M_PI))
-     //      voice->phase += (2 * M_PI);
-
-     // // if (voice->phase > (2 * M_PI))
-     // //      voice->phase -= (2 * M_PI);
-
-     // if (voice->stage == NOTE_DONE && fabs(voice->phase) > 0.0001) {
-     //      voice->stage = NOTE_END;          
-     // }
-     // if (voice->stage == NOTE_DONE) 
-     //      voice->stage = NOTE_END;
-
-     // size_t idx = i % st->srate;
-     float out = sinf(fmod(i * step, M_PI * 2)) * voice->ramp;
-     // float out = sinf(idx * step) * voice->ramp;
-
-
-     
-    // return (float)voice.velocity / 127) * sinf((float)i * step + phase);
-     (void)square;
-     (void)saw;
+    float out = fn(fmod(i * step, M_PI * 2)) * voice->ramp;
+    
+    (void)square;
+    (void)saw;
     return out;
 }
 
-float synth_sample(state_t *st, size_t idx, float volume) {
-     (void)idx;
+float osc_sample(osc_t *osc, state_t *st) {
      int voices = 0;
      float sample = 0.0;
      for (size_t i = 0; i < VOICES; i++) {
@@ -107,13 +84,15 @@ float synth_sample(state_t *st, size_t idx, float volume) {
           if (voice->stage != NULL)
                voices++;
 
-          sample += sine_wave(st, /*idx -*/ voice->idx, voice);
+          sample += gen_wave(osc, st, voice->idx, voice);
+
           voice->idx += 1;
      }
      if (voices == 0)
           return 0.0;
 
-     float out = (sample / voices) * volume;
+     float out = (sample / voices) * osc->vol;
+     // float out = sample * osc->vol;
 
      return out;
 }

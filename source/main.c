@@ -40,6 +40,10 @@ int main(int argc, char **argv) {
     state_t st;
     UNWRAP(state_init(&st));
 
+    st.osc.kind = OSC_SQUARE;
+    st.osc.base = 0;
+    st.osc.vol = 0.5;
+
     st.env_start = &a;
     st.env_done = &r;
 

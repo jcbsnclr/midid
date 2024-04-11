@@ -51,6 +51,18 @@ typedef struct note_state_t {
     jack_time_t time;
 } note_state_t;
 
+typedef enum osc_kind_t {
+    OSC_SIN,
+    OSC_SQUARE,
+    OSC_SAW
+} osc_kind_t;
+
+typedef struct osc_t {
+    osc_kind_t kind;
+    size_t base;
+    float vol;
+} osc_t;
+
 #define VOICES 128
 
 typedef struct state_t {
@@ -62,6 +74,7 @@ typedef struct state_t {
     uint8_t channel;
     float volume;
     jack_time_t time;
+    osc_t osc;
 
     env_stage_t *env_start;
     env_stage_t *env_done;

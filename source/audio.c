@@ -126,7 +126,7 @@ static int process(jack_nframes_t nframes, void *arg) {
         (void)log_voices;
 
         // output_buf[i] = 0.;
-        output_buf[i] = synth_sample(st, st->sample + i, st->volume);
+        output_buf[i] = osc_sample(&st->osc, st);
     }
 
     st->sample += nframes;
