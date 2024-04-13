@@ -65,6 +65,15 @@ typedef struct osc_t {
 
 #define VOICES 128
 
+typedef struct instrument_t {
+    note_state_t active[VOICES];
+
+    env_stage_t *env_start;
+    env_stage_t *env_done;
+
+    osc_t osc;
+} instrument_t;
+
 typedef struct state_t {
     jack_client_t *client;
     jack_port_t *input;
@@ -74,13 +83,8 @@ typedef struct state_t {
     uint8_t channel;
     float volume;
     jack_time_t time;
-    osc_t osc;
 
-    env_stage_t *env_start;
-    env_stage_t *env_done;
-
-    note_state_t active[VOICES];
-    size_t active_recent;
+    instrument_t chan[16];
 } state_t;
 
 result_t state_init(state_t *st);

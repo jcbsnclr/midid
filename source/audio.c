@@ -6,52 +6,52 @@
 #include <string.h>
 #include <synth.h>
 
-static void insert_voice(state_t *st, note_state_t voice) {
-    bool updated = false;
+// static void insert_voice(state_t *st, instrument_t *chan, note_state_t voice) {
+//     bool updated = false;
     
-    voice.stage = st->env_start;
-    for (size_t i = 0; i < VOICES; i++) {
-        if (st->active[i].note == voice.note) {
-            updated = true;
-            st->active[i].stage = st->env_start;
-            st->active[i].velocity = voice.velocity;
-            st->active[i].time = voice.time;
-            st->active[i].start_ramp = st->active[i].ramp;
-            return;
-        }    
-    }
+//     voice.stage = chan->env_start;
+//     for (size_t i = 0; i < VOICES; i++) {
+//         if (chan->active[i].note == voice.note) {
+//             updated = true;
+//             chan->active[i].stage = chan->env_start;
+//             chan->active[i].velocity = voice.velocity;
+//             chan->active[i].time = voice.time;
+//             chan->active[i].start_ramp = chan->active[i].ramp;
+//             return;
+//         }    
+//     }
 
-    if (!updated) {
-        st->active[st->active_recent++] = voice;
-        st->active_recent %= VOICES;
-    }
-}
+//     if (!updated) {
+//         chan->active[chan->active_recent++] = voice;
+//         chan->active_recent %= VOICES;
+//     }
+// }
 
-static void log_voices(state_t *st) {
-    log_info("voices:");
-    for (size_t i = 0; i < VOICES; i++) {
-        note_state_t voice = st->active[i];
-        log_line("[%u] = { .note = %u, .velocity = %u, .stage= %lx, .time = %ums }", i, voice.note, voice.velocity, voice.stage, voice.time);
-    }
-}
+// static void log_voices(state_t *st, instrument_t *chan) {
+//     log_info("voices:");
+//     for (size_t i = 0; i < VOICES; i++) {
+//         note_state_t voice = chan->active[i];
+//         log_line("[%u] = { .note = %u, .velocity = %u, .stage= %lx, .time = %ums }", i, voice.note, voice.velocity, voice.stage, voice.time);
+//     }
+// }
 
-static void filter_voice(state_t *st, uint8_t note) {
-    for (size_t i = 0; i < VOICES; i++)
-        if (st->active[i].note == note) {
-            st->active[i].time = st->time;
-            st->active[i].start_ramp = st->active[i].ramp;
-            st->active[i].stage = st->env_done;
+// static void filter_voice(state_t *st, instrument_t *chan, uint8_t note) {
+//     for (size_t i = 0; i < VOICES; i++)
+//         if (chan->active[i].note == note) {
+//             chan->active[i].time = st->time;
+//             chan->active[i].start_ramp = chan->active[i].ramp;
+//             chan->active[i].stage = chan->env_done;
 
-            // env_stage_t *cur = st->active[i].stage;
-            // while (cur) {
-            //     if (cur->time == 0) {
-            //         cur = cur->next;
-            //         break;
-            //     }
-            //     cur = cur->next;
-            // }            
-        }
-}
+//             // env_stage_t *cur = st->active[i].stage;
+//             // while (cur) {
+//             //     if (cur->time == 0) {
+//             //         cur = cur->next;
+//             //         break;
+//             //     }
+//             //     cur = cur->next;
+//             // }            
+//         }
+// }
 
 static void jack_error_report(const char *msg) {
     log_trace("JACK: %s", msg);
@@ -61,6 +61,54 @@ static int jack_xrun(void *arg) {
     (void)arg;
     log_warn("xrun detected");
     return 0;
+}
+
+static void midi_process(state_t *st, void *midi_buf) {
+    size_t i = 0;
+    jack_midi_event_t ev;
+
+    size_t ev_count = jack_midi_get_event_count(midi_buf);
+
+    while (i < ev_count) {
+        jack_midi_event_get(&ev, midi_buf, i++);
+
+        // MIDI event params
+        uint8_t kind = ev.buffer[MIDI_STATUS] & 0xf0;
+        uint8_t chan = ev.buffer[MIDI_STATUS] & 0x0f;
+        uint8_t note = ev.buffer[MIDI_NOTE];
+        uint8_t vel = ev.buffer[MIDI_VEL];
+
+        instrument_t *inst = &st->chan[chan];
+
+        switch (kind) {
+            case NOTE_ON:
+                log_trace("note on (note = %d, vel = %d)", note, vel);
+                if (vel != 0)
+                    inst->active[note].stage = inst->env_start;
+                else
+                    inst->active[note].stage = inst->env_done;
+
+                inst->active[note].note = note;
+                inst->active[note].velocity = vel;
+                inst->active[note].time = st->time;
+                inst->active[note].start_ramp = inst->active[note].ramp;
+                break;
+
+            case NOTE_OFF:
+                log_trace("note off (note = %d, vel = %d)", note, vel);
+                inst->active[note].stage = inst->env_done;
+                inst->active[note].time = st->time;
+                inst->active[note].start_ramp = inst->active[note].ramp;
+                break;
+
+            case CONTROL:
+
+                break;
+
+            default:
+                log_error("unknown event kind %x", kind);
+        }
+    }
 }
 
 static int process(jack_nframes_t nframes, void *arg) {
@@ -73,60 +121,15 @@ static int process(jack_nframes_t nframes, void *arg) {
     
     void *input_buf = jack_port_get_buffer(st->input, nframes);
     jack_default_audio_sample_t *output_buf = (jack_default_audio_sample_t *)jack_port_get_buffer(st->output, nframes);
-    uint32_t ev_count = jack_midi_get_event_count(input_buf);
-    uint32_t ev_index = 0;
 
-    jack_midi_event_t ev;
+    midi_process(st, input_buf);
 
-    // if (ev_count != 0) {
-    //     log_trace("got %u events", ev_count);
-
-    //     for (uint32_t i = 0; i < ev_count; i++) {
-    //         jack_midi_event_get(&ev, input_buf, i);
-    //         log_line("  event %d time %d. 1st byte 0x%x", i, ev.time, *ev.buffer);
-    //     }
-    // }
-
-    jack_midi_event_get(&ev, input_buf, 0);
-        
     for (size_t i = 0; i < nframes; i++) {
-        if (ev_index < ev_count) {
-            uint8_t kind = ev.buffer[MIDI_STATUS] & 0xf0;
-            uint8_t chan = ev.buffer[MIDI_STATUS] & 0x0f;
-            uint8_t note = ev.buffer[MIDI_NOTE];
-            uint8_t vel = ev.buffer[MIDI_VEL];
-            (void)chan;
+        output_buf[i] = 0.0;
 
-            if (chan == st->channel && (kind == NOTE_OFF || (kind == NOTE_ON && vel == 0))) {
-                // log_info("note off (note = %d, vel = %d)", note, vel);
-                filter_voice(st, note);
-                // log_voices(st);
-            } else if (kind == NOTE_ON && chan == st->channel) {
-                // log_info("note on (note = %d, vel = %d)", note, vel);
-                note_state_t voice = {
-                    .note = note,
-                    .velocity = vel,
-                    .phase = 0.0,
-                    .time = st->time,
-                    .ramp = 0.0,
-                    // .idx = st->sample + i
-                    .idx = 0
-                };             
-                insert_voice(st, voice);
-                // log_voices(st);
-            } else if (kind == CONTROL && chan == st->channel) {
-                // log_info("midi control (controller = %u, value = %u)", ev.buffer[MIDI_CONTROLLER], ev.buffer[MIDI_VALUE]);
-            }
-
-            ev_index++;
-            if (ev_index < ev_count)
-                jack_midi_event_get(&ev, input_buf, ev_index);
+        for (size_t j = 0; j < 16; j++) {
+            output_buf[i] += osc_sample(st, &st->chan[j]);
         }
-
-        (void)log_voices;
-
-        // output_buf[i] = 0.;
-        output_buf[i] = osc_sample(&st->osc, st);
     }
 
     st->sample += nframes;
@@ -173,19 +176,30 @@ result_t state_init(state_t *st) {
     st->volume = 0.5;
     st->channel = 0;
 
+    for (size_t j = 0; j < 16; j++) {
+        instrument_t *inst = &st->chan[j];
 
-    st->active_recent = 0;
-    for (size_t i = 0; i < VOICES; i++)
-        st->active[i] = (note_state_t){
-            .note = 0,
-            .velocity = 0,
-            .idx = 0,
-            .phase = 0.0,
-            .start_ramp = 0.0,
-            .ramp = 0.0,
-            .stage = NULL,
-            .time = 0
-        };
+        // inst->active_recent = 0;
+        inst->env_start = NULL;
+        inst->env_done = NULL;
+
+        inst->osc.base = 0;
+        inst->osc.kind = OSC_SIN;
+        inst->osc.vol = 0.5;
+        
+        for (size_t i = 0; i < VOICES; i++) {
+            note_state_t *ns = &inst->active[i];
+
+            ns->note = 0;
+            ns->velocity = 0;
+            ns->idx = 0;
+            ns->phase = 0.0;
+            ns->start_ramp = 0.0;
+            ns->ramp = 0.0;
+            ns->stage = NULL;
+            ns->time = 0;
+        }
+    }
     
     return OK_VAL;
 }

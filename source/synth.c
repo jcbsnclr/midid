@@ -75,24 +75,33 @@ static float gen_wave(osc_t *osc, state_t *st, size_t i, note_state_t *voice) {
     return out;
 }
 
-float osc_sample(osc_t *osc, state_t *st) {
+float osc_sample(state_t *st, instrument_t *inst) {
+   #define X(x) log_trace("THERE %d",x);
+     
+     // X(1);
      int voices = 0;
      float sample = 0.0;
      for (size_t i = 0; i < VOICES; i++) {
-          note_state_t *voice = &st->active[i];
+          // X(2);
+          note_state_t *voice = &inst->active[i];
 
-          if (voice->stage != NULL)
+          if (voice->stage != NULL) {
                voices++;
 
-          sample += gen_wave(osc, st, voice->idx, voice);
+               // X(4);
+               sample += gen_wave(&inst->osc, st, voice->idx, voice);
+          }
 
           voice->idx += 1;
      }
+     // X(5);
      if (voices == 0)
           return 0.0;
 
-     float out = (sample / voices) * osc->vol;
-     // float out = sample * osc->vol;
+     // X(6);
+
+     // float out = (sample / voices) * osc->vol;
+     float out = sample * inst->osc.vol;
 
      return out;
 }
