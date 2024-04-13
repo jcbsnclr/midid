@@ -6,12 +6,14 @@ typedef struct result_t {
     enum {
         OK,
         ERR_JACK,
-        ERR_LIBC
+        ERR_LIBC,
+        ERR_CMDLINE
     } kind;
 
     union {
         jack_status_t err_jack;  
         int err_libc;
+        char *arg;
     };
 } result_t;
 

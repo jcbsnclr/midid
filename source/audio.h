@@ -54,13 +54,15 @@ typedef struct note_state_t {
 typedef enum osc_kind_t {
     OSC_SIN,
     OSC_SQUARE,
-    OSC_SAW
+    OSC_SAW,
+    OSC_MAX
 } osc_kind_t;
 
 typedef struct osc_t {
     osc_kind_t kind;
     size_t base;
     float vol;
+    float bias;
 } osc_t;
 
 #define VOICES 128

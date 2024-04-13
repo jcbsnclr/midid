@@ -1,9 +1,8 @@
-#include <math.h>
-#include <stdlib.h>
-
-#include <synth.h>
 #include <audio.h>
 #include <log.h>
+#include <math.h>
+#include <stdlib.h>
+#include <synth.h>
 
 /*
 Input: Peak amplitude (A), Frequency (f)
@@ -20,88 +19,83 @@ if phase > (2 * pi) then
 #define ADJUST_TIME SECS(1)
 
 static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_time_t time) {
-     jack_time_t rel_time = st->time - voice->time;
-     float t = (float)rel_time / (float)time;
+    jack_time_t rel_time = st->time - voice->time;
+    float t = (float)rel_time / (float)time;
 
-     return (1.0 - t) * base + t * to;
+    return (1.0 - t) * base + t * to;
 }
 
 static void env_process(state_t *st, note_state_t *voice) {
-     env_stage_t *env = voice->stage;
-     
-     if (env && env->time != ENV_SUSTAIN) {
-          voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
+    env_stage_t *env = voice->stage;
 
-          if (voice->time + env->time < st->time) {
-               voice->stage = env->next;
-               voice->time = st->time;
-               voice->start_ramp = voice->ramp;
-          }
-     } else if (env && env->time == ENV_SUSTAIN) { 
-          voice->ramp = voice->start_ramp;
-     } else if (!env) {
-          voice->ramp = 0.0;
-     }
+    if (env && env->time != ENV_SUSTAIN) {
+        voice->ramp = lerp(st, voice, voice->start_ramp, env->amp, env->time);
+
+        if (voice->time + env->time < st->time) {
+            voice->stage = env->next;
+            voice->time = st->time;
+            voice->start_ramp = voice->ramp;
+        }
+    } else if (env && env->time == ENV_SUSTAIN) {
+        voice->ramp = voice->start_ramp;
+    } else if (!env) {
+        voice->ramp = 0.0;
+    }
 }
 
-static float square(float x) {
-     return sinf(x) > 0.0 ? 1.0 : -1.0;
-}
+static float wave_square(osc_t *osc, float x) { return sinf(x) > osc->bias ? 1.0 : -1.0; }
 
-static float saw(float x) {
-     return 0.0;
-}
+static float wave_saw(osc_t *osc, float x) { return 0.0; }
 
-typedef float (*wave_fn_t)(float);
+static float wave_sin(osc_t *osc, float x) { return sinf(x); }
+
+typedef float (*wave_fn_t)(osc_t *, float);
 
 static wave_fn_t wave_fn_table[] = {
-     [OSC_SIN] = sinf,
-     [OSC_SQUARE] = square,
-     [OSC_SAW] = saw,
+    [OSC_SIN] = wave_sin,
+    [OSC_SQUARE] = wave_square,
+    [OSC_SAW] = wave_saw,
 };
 
 static float gen_wave(osc_t *osc, state_t *st, size_t i, note_state_t *voice) {
-    float hz = powf(2, ((float)voice->note - 69.)/12.) * 440.;
-     
+    float hz = powf(2, ((float)voice->note - 69.) / 12.) * 440.;
+
     env_process(st, voice);
-    
-     wave_fn_t fn = wave_fn_table[osc->kind];
-    
+
+    wave_fn_t fn = wave_fn_table[osc->kind];
+
     float step = (hz * 2 * M_PI) / st->srate;
-    float out = fn(fmod(i * step, M_PI * 2)) * voice->ramp;
-    
-    (void)square;
-    (void)saw;
+    float out = fn(osc, fmod(i * step, M_PI * 2)) * voice->ramp;
+
     return out;
 }
 
 float osc_sample(state_t *st, instrument_t *inst) {
-   #define X(x) log_trace("THERE %d",x);
-     
-     // X(1);
-     int voices = 0;
-     float sample = 0.0;
-     for (size_t i = 0; i < VOICES; i++) {
-          // X(2);
-          note_state_t *voice = &inst->active[i];
+#define X(x) log_trace("THERE %d", x);
 
-          if (voice->stage != NULL) {
-               voices++;
+    // X(1);
+    int voices = 0;
+    float sample = 0.0;
+    for (size_t i = 0; i < VOICES; i++) {
+        // X(2);
+        note_state_t *voice = &inst->active[i];
 
-               // X(4);
-               sample += gen_wave(&inst->osc, st, voice->idx, voice);
-          }
+        if (voice->stage != NULL) {
+            voices++;
 
-          voice->idx += 1;
-     }
-     // X(5);
-     if (voices == 0)
-          return 0.0;
+            // X(4);
+            sample += gen_wave(&inst->osc, st, voice->idx, voice);
+        }
 
-     // X(6);
+        voice->idx += 1;
+    }
+    // X(5);
+    if (voices == 0) return 0.0;
 
-     // float out = (sample / voices) * osc->vol;
-     float out = sample * inst->osc.vol;
+    // X(6);
 
-     return out;
+    // float out = (sample / voices) * osc->vol;
+    float out = sample * inst->osc.vol;
+
+    return out;
 }

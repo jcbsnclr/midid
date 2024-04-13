@@ -32,5 +32,9 @@ void report_result(result_t info) {
             if (err_jack & JackBackendError)  log_line("  backend error");
             if (err_jack & JackClientZombie)  log_line("  client zombie");
         } break;
+
+        case ERR_CMDLINE: {
+            log_line("cmdline: failed to parse argument '%s'", info.arg);
+        } break;
     }
 }
