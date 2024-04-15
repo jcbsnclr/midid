@@ -7,6 +7,9 @@
 #include "jack/midiport.h"
 #include "jack/types.h"
 
+char *osc_kind_str[OSC_MAX] = {
+    [OSC_SIN] = "sin", [OSC_SQUARE] = "square", [OSC_TRIANGLE] = "triangle", [OSC_SAW] = "saw", [OSC_NOISE] = "noise"};
+
 static void jack_error_report(const char *msg) {
     log_trace("JACK: %s", msg);
 }
@@ -44,11 +47,11 @@ static void midi_process(state_t *st, void *midi_buf) {
                               note,
                               vel,
                               chan,
-                              inst->osc.kind,
+                              inst->osc1.kind,
                               i);
                     if (vel != 0)
                         inst->active[note].stage = inst->env.start;
-                    else
+                    else if (inst->env.done)
                         inst->active[note].stage = inst->env.done;
 
                     inst->active[note].note = note;
@@ -67,7 +70,7 @@ static void midi_process(state_t *st, void *midi_buf) {
                     //           chan,
                     //           inst->osc.kind,
                     //           i);
-                    inst->active[note].stage = inst->env.done;
+                    if (inst->env.done) inst->active[note].stage = inst->env.done;
                     inst->active[note].time = st->time;
                     inst->active[note].start_ramp = inst->active[note].ramp;
                 } break;
@@ -78,12 +81,12 @@ static void midi_process(state_t *st, void *midi_buf) {
 
                     switch (cc) {
                         case 1: {
-                            inst->osc.bias = (float)val / 127.f;
+                            inst->osc1.bias = (float)val / 127.f;
                         } break;
 
                         case 12: {
-                            inst->osc.kind = ((float)val / 127.f) * (OSC_MAX - 1);
-                            log_trace("lol %d", inst->osc.kind);
+                            inst->osc1.kind = ((float)val / 127.f) * (OSC_MAX - 1);
+                            log_trace("lol %d", inst->osc1.kind);
                         } break;
 
                         default:
@@ -171,10 +174,11 @@ result_t state_init(state_t *st) {
         // inst->active_recent = 0;
         inst->env.start = NULL;
         inst->env.done = NULL;
+        inst->chan = 255;
 
-        inst->osc.base = 0;
-        inst->osc.kind = OSC_SIN;
-        inst->osc.vol = 0.5;
+        inst->osc1.base = 0;
+        inst->osc1.kind = OSC_SIN;
+        inst->osc1.vol = 0.5;
 
         for (size_t i = 0; i < VOICES; i++) {
             note_state_t *ns = &inst->active[i];

@@ -83,19 +83,23 @@ static wave_fn_t wave_fn_table[] = {
     [OSC_NOISE] = wave_noise,
 };
 
-static float gen_wave(osc_t *osc, state_t *st, size_t i, note_state_t *voice) {
-    int64_t note = voice->note + osc->base - 69;
+static float gen_wave(osc_t *osc, instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
+    int8_t note = (voice->note + osc->base) - 69;
     float hz = powf(2, (float)note / 12.) * 440.;
+
+    float hz_fm = powf(2, ((float)note - 24.) / 12.) * 440.;
+    // float hz_fm = 1000;
 
     env_process(st, voice);
 
-    wave_fn_t fn = wave_fn_table[osc->kind];
+    /*
+f (t) = A sin(2πCt + D sin(2πM t))
+        */
 
-    // float step = (hz * 2 * M_PI) / st->srate;
-    // float out = fn(st, osc, voice, fmod(i * step, M_PI * 2), hz) * voice->ramp;
-    float out = fn(st, osc, voice, i, hz) * voice->ramp;
+    float mod = wave_fn_table[inst->osc2.kind](st, osc, voice, i, hz_fm);  // modulator
+    // float car = wave_fn_table[osc->kind](st, osc, voice, i, hz);           // carrier
 
-    return out;
+    return voice->ramp * wave_fn_table[osc->kind](st, osc, voice, i, hz * mod);
 }
 
 float osc_sample(state_t *st, instrument_t *inst) {
@@ -107,7 +111,7 @@ float osc_sample(state_t *st, instrument_t *inst) {
 
         if (voice->stage != NULL) {
             // X(4);
-            sample += gen_wave(&inst->osc, st, voice->idx, voice);
+            sample += gen_wave(&inst->osc1, inst, st, voice->idx, voice);
         }
 
         voice->idx += 1;
@@ -116,7 +120,9 @@ float osc_sample(state_t *st, instrument_t *inst) {
     // X(6);
 
     // float out = (sample / voices) * osc->vol;
-    float out = sample * inst->osc.vol;
+    float out = sample * inst->osc1.vol;
+
+    // log_warn("out = %f", out);
 
     return out;
 }

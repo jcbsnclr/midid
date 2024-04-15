@@ -1,8 +1,4 @@
 # TODO
-- different types of wave*
-  - square
-  - triangle
-  - etc. 
 - modulation 
   - one wave affects other wave create new wave
     - freq modulation
@@ -16,4 +12,8 @@
 - filter
   - low pass
 - midicc
-  - 
+
+# IDEAS
+- organise instruments/oscillators/envelopes in pools
+  - accessed via indices
+  

@@ -46,7 +46,7 @@ typedef enum note_stage_t {
 #define SECS(n) ((jack_time_t)(n * 1000000))
 
 typedef struct note_state_t {
-    uint8_t note;
+    int8_t note;
     uint8_t velocity;
     size_t idx;
     float phase;
@@ -74,13 +74,14 @@ typedef struct osc_t {
 
 #define VOICES 128
 #define INSTRUMENTS 64
-#define ENVELOPES 64
+#define ENVELOPES 256
 
 typedef struct instrument_t {
     note_state_t active[VOICES];
     uint8_t chan;
     env_t env;
-    osc_t osc;
+    osc_t osc1;
+    osc_t osc2;
 } instrument_t;
 
 typedef struct state_t {
@@ -96,6 +97,8 @@ typedef struct state_t {
     instrument_t inst_pool[INSTRUMENTS];
     size_t inst_len;
 } state_t;
+
+extern char *osc_kind_str[OSC_MAX];
 
 result_t state_init(state_t *st);
 void state_free(state_t *st);

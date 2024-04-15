@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "jack/types.h"
+#include "kv.h"
 
 result_t test_fail() {
     return LIBC_ERR(EINVAL);
@@ -73,12 +74,16 @@ int main(int argc, char **argv) {
 
     // st.inst_len++;
 
+    env_stage_t env_pool[ENVELOPES];
+    size_t env_frame = 0;
+    size_t env_len = 0;
+
     const char *in_port_name = jack_port_name(st.input);
     const char *out_port_name = jack_port_name(st.output);
 
     const char **ports;
     int c;
-    while ((c = getopt(argc, argv, "li:o:")) != -1) {
+    while ((c = getopt(argc, argv, "li:o:I:")) != -1) {
         switch (c) {
             case 'l':
                 ports = jack_get_ports(st.client, "", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput);
@@ -139,6 +144,72 @@ int main(int argc, char **argv) {
 
                 break;
 
+            case 'I':
+                (void)0;
+
+                instrument_t *inst = &st.inst_pool[st.inst_len];
+
+                env_frame = env_len;
+
+                for (;;) {
+                    float t;
+                    float a;
+                    int n = 0;
+                    if (sscanf(optarg, " %fs%f%n", &t, &a, &n) == 2) {
+                        env_pool[env_len].amp = a;
+                        env_pool[env_len].time = SECS(t);
+
+                    } else if (sscanf(optarg, " SUST%n", &n) != EOF && n >= 4) {
+                        env_pool[env_len].time = ENV_SUSTAIN;
+                    } else {
+                        return 1;
+                    }
+                    env_pool[env_len].next = NULL;
+                    optarg += n;
+
+                    if (env_len - env_frame > 0) {
+                        env_pool[env_len - 1].next = &env_pool[env_len];
+
+                        if (env_pool[env_len - 1].time == ENV_SUSTAIN) {
+                            inst->env.done = &env_pool[env_len];
+                        }
+                    } else {
+                        inst->env.start = &env_pool[env_len];
+                    }
+
+                    env_len++;
+
+                    n = 0;
+                    int res = sscanf(optarg, " ->%n", &n);
+                    if (res == EOF || n < 2) {
+                        break;
+                    } else {
+                        optarg += n;
+                    }
+                }
+
+                kv_field_t fields[] = {{.key = "wave", .out = &inst->osc1.kind, .parser = kv_wave},
+                                       {.key = "base", .out = &inst->osc1.base, .parser = kv_int},
+                                       {.key = "vol", .out = &inst->osc1.vol, .parser = kv_float},
+                                       {.key = "bias", .out = &inst->osc1.bias, .parser = kv_float},
+                                       {.key = "chan", .out = &inst->chan, .parser = kv_byte},
+                                       {NULL}};
+
+                inst->osc2.kind = OSC_SQUARE;
+                inst->osc2.base = 0;
+                inst->osc2.vol = 0.5;
+
+                UNWRAP(kv_parse(fields, optarg));
+
+                if (inst->chan == 255) {
+                    log_error("you must specify instrument channel");
+                    return 1;
+                }
+
+                st.inst_len++;
+
+                break;
+
             case '?':
                 jack_client_close(st.client);
                 return 1;
@@ -151,9 +222,14 @@ int main(int argc, char **argv) {
         }
     }
 
-    // log_info("activating JACK client");
-    // jack_activate(st.client);
-    // getc(stdin);
+    log_info("activating JACK client");
+    jack_activate(st.client);
+    getc(stdin);
+
+    // char *str = "wave=square base=0 vol=0.5 bias=0.5 chan=0";
+    // UNWRAP(kv_parse(fields, str));
+
+    // log_error("osc = %s", osc_kind_str[wave]);
 
     jack_free(ports);
     jack_client_close(st.client);

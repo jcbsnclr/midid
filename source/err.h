@@ -7,13 +7,26 @@ typedef struct result_t {
         OK,
         ERR_JACK,
         ERR_LIBC,
-        ERR_CMDLINE
+        ERR_CMDLINE,
+        ERR_KV,
+        ERR_UNKNOWN_WAVE,
     } kind;
 
     union {
         jack_status_t err_jack;  
         int err_libc;
         char *arg;
+        char *wave_name;
+
+        struct {
+            enum {
+                ERR_KV_EMPTY,
+                ERR_KV_NO_VAL,
+                ERR_KV_UNKNOWN_KEY,
+            } kind;
+
+            char *expr;
+        } kv;
     };
 } result_t;
 
@@ -29,3 +42,5 @@ void report_result(result_t info);
 
 #define UNWRAP(res) {result_t result = res; if ((result) IS_ERR) \
     {log_error("fatal error"); report_result(result); exit(1);}}
+
+#define TRY(res) {result_t result = (res); if (result IS_ERR) return result;}
