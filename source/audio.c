@@ -7,56 +7,9 @@
 #include "jack/midiport.h"
 #include "jack/types.h"
 
-// static void insert_voice(state_t *st, instrument_t *chan, note_state_t voice)
-// {
-//     bool updated = false;
-
-//     voice.stage = chan->env_start;
-//     for (size_t i = 0; i < VOICES; i++) {
-//         if (chan->active[i].note == voice.note) {
-//             updated = true;
-//             chan->active[i].stage = chan->env_start;
-//             chan->active[i].velocity = voice.velocity;
-//             chan->active[i].time = voice.time;
-//             chan->active[i].start_ramp = chan->active[i].ramp;
-//             return;
-//         }
-//     }
-
-//     if (!updated) {
-//         chan->active[chan->active_recent++] = voice;
-//         chan->active_recent %= VOICES;
-//     }
-// }
-
-// static void log_voices(state_t *st, instrument_t *chan) {
-//     log_info("voices:");
-//     for (size_t i = 0; i < VOICES; i++) {
-//         note_state_t voice = chan->active[i];
-//         log_line("[%u] = { .note = %u, .velocity = %u, .stage= %lx, .time =
-//         %ums }", i, voice.note, voice.velocity, voice.stage, voice.time);
-//     }
-// }
-
-// static void filter_voice(state_t *st, instrument_t *chan, uint8_t note) {
-//     for (size_t i = 0; i < VOICES; i++)
-//         if (chan->active[i].note == note) {
-//             chan->active[i].time = st->time;
-//             chan->active[i].start_ramp = chan->active[i].ramp;
-//             chan->active[i].stage = chan->env_done;
-
-//             // env_stage_t *cur = st->active[i].stage;
-//             // while (cur) {
-//             //     if (cur->time == 0) {
-//             //         cur = cur->next;
-//             //         break;
-//             //     }
-//             //     cur = cur->next;
-//             // }
-//         }
-// }
-
-static void jack_error_report(const char *msg) { log_trace("JACK: %s", msg); }
+static void jack_error_report(const char *msg) {
+    log_trace("JACK: %s", msg);
+}
 
 static int jack_xrun(void *arg) {
     (void)arg;
@@ -77,58 +30,72 @@ static void midi_process(state_t *st, void *midi_buf) {
         uint8_t kind = ev.buffer[MIDI_STATUS] & 0xf0;
         uint8_t chan = ev.buffer[MIDI_STATUS] & 0x0f;
 
-        instrument_t *inst = &st->chan[chan];
+        for (size_t i = 0; i < st->inst_len; i++) {
+            instrument_t *inst = &st->inst_pool[i];
 
-        switch (kind) {
-            case NOTE_ON: {
-                uint8_t note = ev.buffer[MIDI_NOTE];
-                uint8_t vel = ev.buffer[MIDI_VEL];
+            if (chan != inst->chan) continue;
 
-                log_trace("note on (note = %d, vel = %d, chan = %d, wave = %d)", note, vel, chan, inst->osc.kind);
-                if (vel != 0)
-                    inst->active[note].stage = inst->env_start;
-                else
-                    inst->active[note].stage = inst->env_done;
+            switch (kind) {
+                case NOTE_ON: {
+                    uint8_t note = ev.buffer[MIDI_NOTE];
+                    uint8_t vel = ev.buffer[MIDI_VEL];
 
-                inst->active[note].note = note;
-                inst->active[note].velocity = vel;
-                inst->active[note].time = st->time;
-                inst->active[note].start_ramp = inst->active[note].ramp;
-            } break;
+                    log_trace("note on (note = %d, vel = %d, chan = %d, wave = %d, inst = %d)",
+                              note,
+                              vel,
+                              chan,
+                              inst->osc.kind,
+                              i);
+                    if (vel != 0)
+                        inst->active[note].stage = inst->env.start;
+                    else
+                        inst->active[note].stage = inst->env.done;
 
-            case NOTE_OFF: {
-                uint8_t note = ev.buffer[MIDI_NOTE];
-                uint8_t vel = ev.buffer[MIDI_VEL];
+                    inst->active[note].note = note;
+                    inst->active[note].velocity = vel;
+                    inst->active[note].time = st->time;
+                    inst->active[note].start_ramp = inst->active[note].ramp;
+                } break;
 
-                log_trace("note off (note = %d, vel = %d, chan = %d, wave = %d)", note, vel, chan, inst->osc.kind);
-                inst->active[note].stage = inst->env_done;
-                inst->active[note].time = st->time;
-                inst->active[note].start_ramp = inst->active[note].ramp;
-            } break;
+                case NOTE_OFF: {
+                    uint8_t note = ev.buffer[MIDI_NOTE];
+                    uint8_t vel = ev.buffer[MIDI_VEL];
 
-            case CONTROL: {
-                uint8_t cc = ev.buffer[MIDI_CONTROLLER];
-                uint8_t val = ev.buffer[MIDI_VALUE];
+                    // log_trace("note off (note = %d, vel = %d, chan = %d, wave = %d, inst = %d)",
+                    //           note,
+                    //           vel,
+                    //           chan,
+                    //           inst->osc.kind,
+                    //           i);
+                    inst->active[note].stage = inst->env.done;
+                    inst->active[note].time = st->time;
+                    inst->active[note].start_ramp = inst->active[note].ramp;
+                } break;
 
-                switch (cc) {
-                    case 1: {
-                        inst->osc.bias = (float)val / 127.f;
-                    } break;
+                case CONTROL: {
+                    uint8_t cc = ev.buffer[MIDI_CONTROLLER];
+                    uint8_t val = ev.buffer[MIDI_VALUE];
 
-                    case 12: {
-                        inst->osc.kind = ((float)val / 127.f) * (OSC_MAX - 1);
-                        log_trace("lol %d", inst->osc.kind);
-                    } break;
+                    switch (cc) {
+                        case 1: {
+                            inst->osc.bias = (float)val / 127.f;
+                        } break;
 
-                    default:
-                        break;
-                }
+                        case 12: {
+                            inst->osc.kind = ((float)val / 127.f) * (OSC_MAX - 1);
+                            log_trace("lol %d", inst->osc.kind);
+                        } break;
 
-                log_trace("midi cc (cc = %d, val = %d, chan = %d)", cc, val, chan);
-            } break;
+                        default:
+                            break;
+                    }
 
-            default:
-                log_error("unknown event kind %x", kind);
+                    log_trace("midi cc (cc = %d, val = %d, chan = %d)", cc, val, chan);
+                } break;
+
+                default:
+                    log_error("unknown event kind %x", kind);
+            }
         }
     }
 }
@@ -149,8 +116,8 @@ static int process(jack_nframes_t nframes, void *arg) {
     for (size_t i = 0; i < nframes; i++) {
         output_buf[i] = 0.0;
 
-        for (size_t j = 0; j < 16; j++) {
-            output_buf[i] += osc_sample(st, &st->chan[j]);
+        for (size_t j = 0; j < st->inst_len; j++) {
+            output_buf[i] += osc_sample(st, &st->inst_pool[j]);
         }
     }
 
@@ -196,12 +163,14 @@ result_t state_init(state_t *st) {
     st->volume = 0.5;
     st->channel = 0;
 
-    for (size_t j = 0; j < 16; j++) {
-        instrument_t *inst = &st->chan[j];
+    st->inst_len = 0;
+
+    for (size_t j = 0; j < INSTRUMENTS; j++) {
+        instrument_t *inst = &st->inst_pool[j];
 
         // inst->active_recent = 0;
-        inst->env_start = NULL;
-        inst->env_done = NULL;
+        inst->env.start = NULL;
+        inst->env.done = NULL;
 
         inst->osc.base = 0;
         inst->osc.kind = OSC_SIN;
@@ -210,7 +179,7 @@ result_t state_init(state_t *st) {
         for (size_t i = 0; i < VOICES; i++) {
             note_state_t *ns = &inst->active[i];
 
-            ns->note = 0;
+            ns->note = i;
             ns->velocity = 0;
             ns->idx = 0;
             ns->phase = 0.0;

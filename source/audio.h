@@ -16,6 +16,11 @@ typedef struct env_stage_t {
     struct env_stage_t *next;
 } env_stage_t;
 
+typedef struct env_t {
+    env_stage_t *start;
+    env_stage_t *done;
+} env_t;
+
 typedef enum midi_kind_t {
     NOTE_OFF = 0x80,
     NOTE_ON  = 0x90,
@@ -54,25 +59,27 @@ typedef struct note_state_t {
 typedef enum osc_kind_t {
     OSC_SIN,
     OSC_SQUARE,
+    OSC_TRIANGLE,
     OSC_SAW,
+    OSC_NOISE,
     OSC_MAX
 } osc_kind_t;
 
 typedef struct osc_t {
     osc_kind_t kind;
-    size_t base;
+    int64_t base;
     float vol;
     float bias;
 } osc_t;
 
 #define VOICES 128
+#define INSTRUMENTS 64
+#define ENVELOPES 64
 
 typedef struct instrument_t {
     note_state_t active[VOICES];
-
-    env_stage_t *env_start;
-    env_stage_t *env_done;
-
+    uint8_t chan;
+    env_t env;
     osc_t osc;
 } instrument_t;
 
@@ -86,7 +93,8 @@ typedef struct state_t {
     float volume;
     jack_time_t time;
 
-    instrument_t chan[16];
+    instrument_t inst_pool[INSTRUMENTS];
+    size_t inst_len;
 } state_t;
 
 result_t state_init(state_t *st);
