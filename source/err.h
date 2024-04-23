@@ -10,6 +10,9 @@ typedef struct result_t {
         ERR_CMDLINE,
         ERR_KV,
         ERR_UNKNOWN_WAVE,
+        ERR_MEM_POOL,
+        ERR_OOM,
+        ERR_PARSER
     } kind;
 
     union {
@@ -17,6 +20,26 @@ typedef struct result_t {
         int err_libc;
         char *arg;
         char *wave_name;
+        size_t size;
+
+        struct {
+            enum {
+                ERR_EXPECTED_NAME,
+                ERR_EXPECTED_CHAR,
+                ERR_EXPECTED_NUM,
+                ERR_EXPECTED_LIT,
+                ERR_EXPECTED_IDENT,
+                ERR_UNEXPECTED_EOF,
+                ERR_PARSER_EOF,
+                ERR_PARSER_FAILED,
+            } kind;
+            size_t where;
+            char *src;
+            union {
+                char *exp_lit;
+                char expected;
+            };
+        } parser;
 
         struct {
             enum {

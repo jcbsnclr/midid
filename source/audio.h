@@ -7,6 +7,8 @@
 #include <err.h>
 
 #include <stdbool.h>
+#include "map.h"
+#include "mem.h"
 
 #define ENV_SUSTAIN 0
 
@@ -85,6 +87,9 @@ typedef struct instrument_t {
 } instrument_t;
 
 typedef struct state_t {
+    mem_pool_t pool;
+    map_t map;
+    
     jack_client_t *client;
     jack_port_t *input;
     jack_port_t *output;

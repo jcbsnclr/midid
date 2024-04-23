@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <jack/jack.h>
 #include <jack/midiport.h>
+#include <locale.h>
 #include <log.h>
 #include <stdio.h>
 #include <synth.h>
@@ -10,6 +11,7 @@
 
 #include "jack/types.h"
 #include "kv.h"
+#include "parse.h"
 
 result_t test_fail() {
     return LIBC_ERR(EINVAL);
@@ -23,6 +25,8 @@ result_t test_fail() {
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
+
+    setlocale(LC_ALL, "C");
 
     // env_stage_t a1, d1, s1, r1;
 
@@ -81,9 +85,11 @@ int main(int argc, char **argv) {
     const char *in_port_name = jack_port_name(st.input);
     const char *out_port_name = jack_port_name(st.output);
 
+    bool activate = true;
+
     const char **ports;
     int c;
-    while ((c = getopt(argc, argv, "li:o:I:")) != -1) {
+    while ((c = getopt(argc, argv, "li:o:I:E:")) != -1) {
         switch (c) {
             case 'l':
                 ports = jack_get_ports(st.client, "", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput);
@@ -145,12 +151,8 @@ int main(int argc, char **argv) {
                 break;
 
             case 'I':
-                (void)0;
-
-                instrument_t *inst = &st.inst_pool[st.inst_len];
-
                 env_frame = env_len;
-
+                instrument_t *inst = &st.inst_pool[st.inst_len];
                 for (;;) {
                     float t;
                     float a;
@@ -210,6 +212,13 @@ int main(int argc, char **argv) {
 
                 break;
 
+            case 'E':
+                activate = false;
+                parser_t p;
+                parser_init(&p, optarg);
+                UNWRAP(parse_env(&st, &p));
+                break;
+
             case '?':
                 jack_client_close(st.client);
                 return 1;
@@ -222,17 +231,18 @@ int main(int argc, char **argv) {
         }
     }
 
-    log_info("activating JACK client");
-    jack_activate(st.client);
-    getc(stdin);
+    if (activate) {
+        log_info("activating JACK client");
+        jack_activate(st.client);
+        getc(stdin);
+    }
 
     // char *str = "wave=square base=0 vol=0.5 bias=0.5 chan=0";
     // UNWRAP(kv_parse(fields, str));
 
     // log_error("osc = %s", osc_kind_str[wave]);
 
-    jack_free(ports);
-    jack_client_close(st.client);
+    state_free(&st);
 
     return 0;
 }

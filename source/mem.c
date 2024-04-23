@@ -1,0 +1,56 @@
+#include <assert.h>
+#include <mem.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ALIGN 32
+
+result_t mem_init(mem_pool_t *pool, size_t size) {
+    void *buf = calloc(size, 1);
+
+    if (!buf) return (result_t){.kind = ERR_MEM_POOL, .size = size};
+
+    pool->buf = buf;
+    pool->cap = size;
+    pool->ptr = 0;
+
+    return OK_VAL;
+}
+
+void mem_free(mem_pool_t *pool) {
+    assert(pool->buf);
+    free(pool->buf);
+    pool->buf = NULL;
+}
+
+result_t mem_alloc(mem_pool_t *pool, size_t size, void **out) {
+    assert(pool->buf);
+
+    if (pool->ptr + size >= pool->cap) return (result_t){.kind = ERR_OOM, .size = size};
+
+    size_t chunks = size / ALIGN;
+    if (size % ALIGN != 0) chunks += 1;
+
+    *out = &pool->buf[pool->ptr];
+
+    pool->ptr += chunks * ALIGN;
+
+    return OK_VAL;
+}
+
+result_t mem_alloc_str(mem_pool_t *pool, char *str, char **out) {
+    assert(pool->buf);
+
+    size_t len = strlen(str) + 1;
+
+    if (pool->ptr + len >= pool->cap) return (result_t){.kind = ERR_OOM, .size = len};
+
+    char *buf;
+    TRY(mem_alloc(pool, len, (void **)&buf));
+
+    strcpy(buf, str);
+
+    *out = buf;
+
+    return OK_VAL;
+}

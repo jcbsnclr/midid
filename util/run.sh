@@ -25,6 +25,6 @@
   -I '0.05s1.0 -> 0.1s0.35 -> SUST -> 0.5s0.0 
       chan=6 wave=square bias=0.0 base=0 vol=0.15'    \
                                                       \
-  -I '0.05s1.0 -> 0.1s0.35 -> SUST -> 0.5s0.0 
-      chan=7 wave=sin bias=0.0 base=-12 vol=0.15'     \
+  -I '0.01s1.0 -> SUST -> 0.1s0.0 
+      chan=7 wave=square bias=0.99212 base=-12 vol=0.15'     \
 

@@ -6,6 +6,7 @@
 #include "jack/jack.h"
 #include "jack/midiport.h"
 #include "jack/types.h"
+#include "mem.h"
 
 char *osc_kind_str[OSC_MAX] = {
     [OSC_SIN] = "sin", [OSC_SQUARE] = "square", [OSC_TRIANGLE] = "triangle", [OSC_SAW] = "saw", [OSC_NOISE] = "noise"};
@@ -136,7 +137,12 @@ static int srate(jack_nframes_t nframes, void *arg) {
 }
 
 result_t state_init(state_t *st) {
-    log_info("initialising program state");
+    log_info("allocating memory pool");
+    TRY(mem_init(&st->pool, MiB(8)));
+
+    log_info("creating object map");
+    TRY(map_init(&st->map));
+
     log_debug("opening connection to JACK");
 
     jack_status_t status;
@@ -195,4 +201,12 @@ result_t state_init(state_t *st) {
     }
 
     return OK_VAL;
+}
+
+void state_free(state_t *st) {
+    mem_free(&st->pool);
+    map_free(&st->map);
+
+    jack_deactivate(st->client);
+    jack_client_close(st->client);
 }
