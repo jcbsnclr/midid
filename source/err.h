@@ -7,49 +7,46 @@ typedef struct result_t {
         OK,
         ERR_JACK,
         ERR_LIBC,
-        ERR_CMDLINE,
-        ERR_KV,
         ERR_UNKNOWN_WAVE,
         ERR_MEM_POOL,
         ERR_OOM,
-        ERR_PARSER
+
+        ERR_EXPECTED_NAME,
+        ERR_EXPECTED_CHAR,
+        ERR_EXPECTED_NUM,
+        ERR_EXPECTED_LIT,
+        ERR_EXPECTED_IDENT,
+        ERR_EXPECTED_INT,
+        ERR_EXPECTED_BYTE,
+        ERR_EXPECTED_PAIR,
+        ERR_EXPECTED_VALUE,
+
+        ERR_KEY_INVALID,
+
+        ERR_UNEXPECTED_EOF,
+
+        ERR_KEY_REQUIRED,
+        ERR_EXPECTED_WAVE,
+        ERR_PARSER_EOF,
+        ERR_PARSER_FAILED,
     } kind;
 
     union {
         jack_status_t err_jack;  
         int err_libc;
-        char *arg;
-        char *wave_name;
-        size_t size;
 
         struct {
-            enum {
-                ERR_EXPECTED_NAME,
-                ERR_EXPECTED_CHAR,
-                ERR_EXPECTED_NUM,
-                ERR_EXPECTED_LIT,
-                ERR_EXPECTED_IDENT,
-                ERR_UNEXPECTED_EOF,
-                ERR_PARSER_EOF,
-                ERR_PARSER_FAILED,
-            } kind;
             size_t where;
             char *src;
             union {
                 char *exp_lit;
+                struct {
+                    char *key;
+                    size_t len;
+                };
                 char expected;
             };
-        } parser;
-
-        struct {
-            enum {
-                ERR_KV_EMPTY,
-                ERR_KV_NO_VAL,
-                ERR_KV_UNKNOWN_KEY,
-            } kind;
-
-            char *expr;
-        } kv;
+        };
     };
 } result_t;
 

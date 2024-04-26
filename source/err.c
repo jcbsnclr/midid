@@ -1,8 +1,6 @@
 #include <err.h>
 #include <jack/types.h>
 #include <log.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static size_t resolve(char *src, size_t pos) {
@@ -43,64 +41,63 @@ void report_result(result_t info) {
             if (err_jack & JackClientZombie) log_line("  client zombie");
         } break;
 
-        case ERR_PARSER: {
-            line = resolve(info.parser.src, info.parser.where);
-            log_line("parser:");
-            switch (info.parser.kind) {
-                case ERR_EXPECTED_NAME:
-                    log_line("  line %lu: expected name", line);
-                    break;
-                case ERR_EXPECTED_CHAR:
-                    log_line("  line %lu: expected char '%c'", line, info.parser.expected);
-                    break;
-                case ERR_EXPECTED_NUM:
-                    log_line("  line %lu: expected number", line);
-                    break;
-                case ERR_EXPECTED_IDENT:
-                    log_line("  line %lu: expected ident", line);
-                    break;
-                case ERR_EXPECTED_LIT:
-                    log_line("  line %lu: expected lit '%s'", line, info.parser.exp_lit);
-                    break;
+        case ERR_EXPECTED_NAME:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: expected name", line);
+            break;
+        case ERR_EXPECTED_CHAR:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: expected char '%c'", line, info.expected);
+            break;
+        case ERR_EXPECTED_NUM:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: expected number", line);
+            break;
+        case ERR_EXPECTED_IDENT:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: expected ident", line);
+            break;
+        case ERR_EXPECTED_LIT:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: expected lit '%s'", line, info.exp_lit);
+            break;
 
-                case ERR_UNEXPECTED_EOF:
-                    log_line("  line %lu: unexpected EOF", line);
-                    break;
+        case ERR_EXPECTED_PAIR:
+            line = resolve(info.src, info.where);
+            log_line(" line %lu: expected pair", line);
+            break;
 
-                default:
-                    log_line("  line %lu: unknown error");
-                    break;
-            }
-        } break;
+        case ERR_EXPECTED_VALUE:
+            line = resolve(info.src, info.where);
+            log_line(" line %lu: expected value", line);
+            break;
 
-        case ERR_CMDLINE: {
-            log_line("cmdline: failed to parse argument '%s'", info.arg);
-        } break;
+        case ERR_KEY_REQUIRED:
+            line = resolve(info.src, info.where);
+            log_line(" line %lu: key '%s' required", info.key);
+            break;
 
-        case ERR_UNKNOWN_WAVE: {
-            log_line("unknown wave-form '%s'", info.wave_name);
-        } break;
+        case ERR_EXPECTED_WAVE:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: expected wave", line);
+            break;
+
+        case ERR_UNEXPECTED_EOF:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: unexpected EOF", line);
+            break;
+
+        case ERR_KEY_INVALID:
+            line = resolve(info.src, info.where);
+            log_line("  line %lu: invalid key '%.*s'", line, info.len, info.key);
+            break;
 
         case ERR_MEM_POOL: {
-            log_line("failed to allocate memory pool (size = %lu bytes)", info.size);
+            log_line("failed to allocate memory pool");
         } break;
 
         case ERR_OOM: {
-            log_line("out of memory (size = %lu bytes)", info.size);
-        } break;
-
-        case ERR_KV: {
-            switch (info.kv.kind) {
-                case ERR_KV_EMPTY:
-                    log_line("kv: empty expression: '%s'", info.kv.expr);
-                    break;
-                case ERR_KV_NO_VAL:
-                    log_line("kv: no value: '%s'", info.kv.expr);
-                    break;
-                case ERR_KV_UNKNOWN_KEY:
-                    log_line("kv: unknown key: '%s'", info.kv.expr);
-                    break;
-            }
+            log_line("out of memory");
         } break;
     }
 }

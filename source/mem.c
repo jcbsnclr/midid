@@ -8,7 +8,7 @@
 result_t mem_init(mem_pool_t *pool, size_t size) {
     void *buf = calloc(size, 1);
 
-    if (!buf) return (result_t){.kind = ERR_MEM_POOL, .size = size};
+    if (!buf) return (result_t){.kind = ERR_MEM_POOL};
 
     pool->buf = buf;
     pool->cap = size;
@@ -26,7 +26,7 @@ void mem_free(mem_pool_t *pool) {
 result_t mem_alloc(mem_pool_t *pool, size_t size, void **out) {
     assert(pool->buf);
 
-    if (pool->ptr + size >= pool->cap) return (result_t){.kind = ERR_OOM, .size = size};
+    if (pool->ptr + size >= pool->cap) return (result_t){.kind = ERR_OOM};
 
     size_t chunks = size / ALIGN;
     if (size % ALIGN != 0) chunks += 1;
@@ -38,17 +38,15 @@ result_t mem_alloc(mem_pool_t *pool, size_t size, void **out) {
     return OK_VAL;
 }
 
-result_t mem_alloc_str(mem_pool_t *pool, char *str, char **out) {
+result_t mem_alloc_str(mem_pool_t *pool, char *str, size_t len, char **out) {
     assert(pool->buf);
 
-    size_t len = strlen(str) + 1;
-
-    if (pool->ptr + len >= pool->cap) return (result_t){.kind = ERR_OOM, .size = len};
+    if (pool->ptr + len >= pool->cap) return (result_t){.kind = ERR_OOM};
 
     char *buf;
     TRY(mem_alloc(pool, len, (void **)&buf));
 
-    strcpy(buf, str);
+    strncpy(buf, str, len);
 
     *out = buf;
 

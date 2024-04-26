@@ -10,9 +10,6 @@
 #include "audio.h"
 #include "err.h"
 
-// maximum number of envelope stages in an envelope (arbitrary)
-#define ENV_STAGES 32
-
 #define PARSER_ERR(k)                                \
     (result_t) {                                     \
         .kind = ERR_PARSER, .parser = {.kind = (k) } \
@@ -33,7 +30,19 @@ static bool is_digit(char c) {
 }
 
 static bool is_ws(char c) {
-    return isspace(c);
+    return c != '\n' && isspace(c);
+}
+
+static bool is_not_nl(char c) {
+    return c != '\n';
+}
+
+// static bool is_not_ws(char c) {
+//     return !isspace(c);
+// }
+
+static bool is_not_tok_end(char c) {
+    return !isspace(c) && c != '#';
 }
 
 static bool take_if(parser_t *p, ccond_t cond) {
@@ -70,13 +79,19 @@ static void skip_ws(parser_t *p) {
     take_while(p, is_ws);
 }
 
+static bool skip_comment(parser_t *p) {
+    bool taken = take_ifc(p, '#');
+    take_while(p, is_not_nl);
+    return taken;
+}
+
 static bool is_eof(parser_t *p) {
     return p->ptr >= p->len;
 }
 
-#define PARSE_ERR(k, w, s, ...)                                                             \
-    (result_t) {                                                                            \
-        .kind = ERR_PARSER, .parser = {.kind = (k), .where = (w), .src = (s), __VA_ARGS__ } \
+#define PARSE_ERR(k, w, s, ...)                            \
+    (result_t) {                                           \
+        .kind = (k), .where = (w), .src = (s), __VA_ARGS__ \
     }
 
 #define TRY_IFC(p, c) \
@@ -180,8 +195,6 @@ result_t parse_env(state_t *st, parser_t *p) {
     size_t len = 0;
     TRY(take_name(p, &start, &len));
 
-    log_debug("len = %lu", len);
-
     size_t name = start;
     size_t name_len = len;
 
@@ -190,8 +203,6 @@ result_t parse_env(state_t *st, parser_t *p) {
 
     TALLOC(&st->pool, &env);
     TALLOC(&st->pool, &cur);
-
-    log_error("%p", env);
 
     last = cur;
 
@@ -217,15 +228,127 @@ result_t parse_env(state_t *st, parser_t *p) {
         if (take_lit(p, "->") IS_ERR) break;
     }
 
+    skip_comment(p);
+
+    log_trace("env %.*s:", name_len, p->src + name);
     env_stage_t *x = env->start;
-    while (x) {
-        log_info("time = %lu, %f", x->time, x->amp);
+    for (int i = 0; x; i++) {
+        log_line("  [%d] time = %lu, amp = %f", i, x->time, x->amp);
         x = x->next;
     }
 
     TRY(map_insert(&st->map, p->src + name, name_len, (void *)env, OBJ_ENV));
 
     map_print(&st->map);
+
+    skip_ws(p);
+
+    return OK_VAL;
+}
+
+static result_t parse_pair(parser_t *p, size_t *key, size_t *key_len, size_t *val,
+                           size_t *val_len) {
+    skip_ws(p);
+    TRY(take_ident(p, key, key_len));
+    skip_ws(p);
+    TRY_IFC(p, '=');
+    skip_ws(p);
+
+    *val = p->ptr;
+    if (!take_while(p, is_not_tok_end)) return PARSE_ERR(ERR_EXPECTED_VALUE, p->ptr, p->src);
+    *val_len = p->ptr - *val;
+
+    return OK_VAL;
+}
+
+result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields) {
+    bool taken = false;
+
+    for (;;) {
+        size_t key, key_len, val, val_len;
+
+        result_t res = parse_pair(p, &key, &key_len, &val, &val_len);
+
+        if (res IS_ERR) {
+            if (res.kind == ERR_EXPECTED_IDENT) break;
+
+            return res;
+        }
+
+        log_warn("key = %.*s, val = %.*s", key_len, p->src + key, val_len, p->src + val);
+
+        bool matches = false;
+
+        for (parse_field_t *cur = fields; cur->key; cur++) {
+            if (!cur->taken && strncmp(cur->key, p->src + key, key_len) == 0) {
+                matches = true;
+                TRY(cur->parser(&st->pool, p, p->src + val, val_len, cur->out));
+                cur->taken = true;
+            }
+        }
+
+        if (!matches)
+            return PARSE_ERR(ERR_KEY_INVALID, key, p->src, .key = p->src + key, .len = key_len);
+
+        taken = true;
+    }
+
+    for (parse_field_t *cur = fields; cur->key; cur++)
+        if (cur->required && !cur->taken)
+            return PARSE_ERR(ERR_KEY_REQUIRED, p->ptr, p->src, .key = cur->key);
+
+    if (!taken) return PARSE_ERR(ERR_EXPECTED_PAIR, p->ptr, p->src);
+
+    return OK_VAL;
+}
+
+result_t parse_osc(state_t *st, parser_t *p) {
+    (void)st;
+    size_t name, name_len;
+    TRY(take_name(p, &name, &name_len));
+
+    osc_t *osc;
+    TALLOC(&st->pool, &osc);
+
+    osc->base = 0;
+    osc->bias = 0.0;
+    osc->kind = OSC_SIN;
+    osc->vol = 0.0;
+
+    parse_field_t fields[] = {
+        {.key = "wave", .out = &osc->kind, .required = true, .parser = extract_wave}, {NULL}};
+
+    TRY(parse_fields(st, p, fields));
+
+    log_info("WAVE KIND %s", osc_kind_str[osc->kind]);
+
+    skip_comment(p);
+
+    TRY(map_insert(&st->map, p->src + name, name_len, osc, OBJ_OSC));
+
+    return OK_VAL;
+}
+
+// extractors
+result_t extract_any(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    return mem_alloc_str(pool, str, len, (char **)out);
+}
+
+#define MIN(x, y) (x < y ? x : y)
+
+result_t extract_wave(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    bool matched = false;
+    osc_kind_t *o = (osc_kind_t *)out;
+
+    for (size_t i = 0; i < OSC_MAX; i++) {
+        if (strncmp(str, osc_kind_str[i], len) == 0) {
+            *o = i;
+            matched = true;
+            break;
+        }
+    }
+
+    if (!matched) return PARSE_ERR(ERR_EXPECTED_WAVE, p->ptr, p->src);
 
     return OK_VAL;
 }

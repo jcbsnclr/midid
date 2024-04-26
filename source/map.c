@@ -58,7 +58,7 @@ result_t map_insert(map_t *map, char *key, size_t len, void *val, obj_kind_t kin
 
     map_bucket_t *bucket = find_bucket(map, key, len, kind);
     char *keyp;
-    mem_alloc_str(&map->pool, key, &keyp);
+    mem_alloc_str(&map->pool, key, len, &keyp);
 
     if (!bucket) {
         TALLOC(&map->pool, &bucket);

@@ -8,8 +8,11 @@
 #include "jack/types.h"
 #include "mem.h"
 
-char *osc_kind_str[OSC_MAX] = {
-    [OSC_SIN] = "sin", [OSC_SQUARE] = "square", [OSC_TRIANGLE] = "triangle", [OSC_SAW] = "saw", [OSC_NOISE] = "noise"};
+char *osc_kind_str[OSC_MAX] = {[OSC_SIN] = "sin",
+                               [OSC_SQUARE] = "square",
+                               [OSC_TRIANGLE] = "triangle",
+                               [OSC_SAW] = "saw",
+                               [OSC_NOISE] = "noise"};
 
 static void jack_error_report(const char *msg) {
     log_trace("JACK: %s", msg);
@@ -113,7 +116,8 @@ static int process(jack_nframes_t nframes, void *arg) {
     jack_get_cycle_times(st->client, &cur_frames, &st->time, &next_usecs, &period_usecs);
 
     void *input_buf = jack_port_get_buffer(st->input, nframes);
-    jack_default_audio_sample_t *output_buf = (jack_default_audio_sample_t *)jack_port_get_buffer(st->output, nframes);
+    jack_default_audio_sample_t *output_buf =
+        (jack_default_audio_sample_t *)jack_port_get_buffer(st->output, nframes);
 
     midi_process(st, input_buf);
 
@@ -152,8 +156,10 @@ result_t state_init(state_t *st) {
 
     log_debug("opening MIDI input and audio output");
 
-    st->input = jack_port_register(st->client, "midi_in", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
-    st->output = jack_port_register(st->client, "audio_out", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+    st->input =
+        jack_port_register(st->client, "midi_in", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
+    st->output =
+        jack_port_register(st->client, "audio_out", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
 
     if (!st->input || !st->output) return JACK_ERR(status);
 

@@ -10,6 +10,10 @@ typedef enum log_level_t {
     LOG_ERROR
 } log_level_t;
 
+extern log_level_t filter;
+
+void log_init();
+
 void log_inner(log_level_t level, const char *filename, uint32_t line, const char *func, char *fmt, ...);
 void log_line(char *fmt, ...);
 

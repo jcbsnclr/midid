@@ -4,7 +4,7 @@ DBG?=gdb
 CSRC:=$(wildcard source/*.c)
 COBJ:=$(patsubst source/%.c, build/%.c.o, $(CSRC))
 
-CFLAGS+=-O3 -g -Wall -Wextra -Isource/ -c -MMD
+CFLAGS+=-O3 -g -Wall -Wextra  -Wno-missing-field-initializers -Isource/ -c -MMD
 LFLAGS+=-lm
 
 DEPS:=linenoise jack
