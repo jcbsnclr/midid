@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <log.h>
 #include <map.h>
 #include <mem.h>
@@ -10,10 +11,14 @@
 #include "audio.h"
 #include "err.h"
 
-#define PARSER_ERR(k)                                \
-    (result_t) {                                     \
-        .kind = ERR_PARSER, .parser = {.kind = (k) } \
-    }
+static size_t resolve(char *src, size_t pos) {
+    size_t line = 1;
+
+    for (size_t i = 0; i < pos && src[i]; i++)
+        if (src[i] == '\n') line++;
+
+    return line;
+}
 
 typedef bool (*ccond_t)(char);
 
@@ -89,23 +94,24 @@ static bool is_eof(parser_t *p) {
     return p->ptr >= p->len;
 }
 
-#define PARSE_ERR(k, w, s, ...)                            \
-    (result_t) {                                           \
-        .kind = (k), .where = (w), .src = (s), __VA_ARGS__ \
-    }
+#define PARSE_ERR(k, l, f, ...) ERR_VAL(k, "line %lu: " f, (l), __VA_ARGS__)
 
-#define TRY_IFC(p, c) \
-    if (!take_ifc((p), (c))) return PARSE_ERR(ERR_EXPECTED_CHAR, p->ptr, p->src, .expected = (c))
+#define TRY_IFC(p, c)        \
+    if (!take_ifc((p), (c))) \
+    return PARSE_ERR(ERR_EXPECTED_CHAR, resolve((p)->src, (p)->ptr), "expected char %c'", c)
 
-#define FAIL_EOF(p) \
-    if (is_eof((p))) return PARSE_ERR(ERR_UNEXPECTED_EOF, p->ptr, p->src)
+#define FAIL_EOF(p)  \
+    if (is_eof((p))) \
+    return PARSE_ERR(ERR_UNEXPECTED_EOF, resolve(p->src, p->ptr), "unexpected EOF", "")
 
 static result_t take_ident(parser_t *p, size_t *start, size_t *len) {
     *start = p->ptr;
     *len = 0;
 
-    if (p->ptr >= p->len || !take_if(p, is_ident_start))
-        return PARSE_ERR(ERR_EXPECTED_IDENT, *start, p->src);
+    if (p->ptr >= p->len || !take_if(p, is_ident_start)) {
+        size_t line = resolve(p->src, p->ptr);
+        return PARSE_ERR(ERR_EXPECTED_IDENT, line, "expected identifier", "");
+    }
 
     take_while(p, is_ident_body);
 
@@ -133,22 +139,27 @@ static result_t take_lit(parser_t *p, char *lit) {
         return OK_VAL;
     }
 
-    return PARSE_ERR(ERR_EXPECTED_LIT, start, p->src, .exp_lit = lit);
+    size_t line = resolve(p->src, p->ptr);
+    return PARSE_ERR(
+        ERR_EXPECTED_LIT, line, "expected literal '%s', found '%.*s'", lit, len, p->src + start);
 }
 
 static result_t take_num(parser_t *p, size_t *start, size_t *len) {
     *start = p->ptr;
     *len = 0;
 
-    if (p->ptr >= p->len) return PARSE_ERR(ERR_EXPECTED_NUM, p->ptr, p->src);
+    size_t line = resolve(p->src, *start);
+    if (p->ptr >= p->len)
+        return PARSE_ERR(ERR_EXPECTED_NUM, line, "expected number, found EOF", "");
 
     if (p->ptr + 1 < p->len && strncmp(p->src + *start, "->", 2) == 0)
-        return PARSE_ERR(ERR_EXPECTED_NUM, p->ptr, p->src);
+        return PARSE_ERR(ERR_EXPECTED_NUM, line, "expected number, found '->'", "");
 
     take_ifc(p, '-');
     take_ifc(p, '+');
 
-    if (!take_while(p, is_digit)) return PARSE_ERR(ERR_EXPECTED_NUM, p->ptr, p->src);
+    if (!take_while(p, is_digit))
+        return PARSE_ERR(ERR_EXPECTED_NUM, line, "expected number, found '%c'", p->src[*start]);
 
     if (take_ifc(p, '.')) take_while(p, is_digit);
 
@@ -255,7 +266,12 @@ static result_t parse_pair(parser_t *p, size_t *key, size_t *key_len, size_t *va
     skip_ws(p);
 
     *val = p->ptr;
-    if (!take_while(p, is_not_tok_end)) return PARSE_ERR(ERR_EXPECTED_VALUE, p->ptr, p->src);
+    if (!take_while(p, is_not_tok_end))
+        return PARSE_ERR(ERR_EXPECTED_VALUE,
+                         resolve(p->src, p->ptr),
+                         "key '%.*s' missing value",
+                         key_len,
+                         p->src + *key);
     *val_len = p->ptr - *val;
 
     return OK_VAL;
@@ -263,6 +279,8 @@ static result_t parse_pair(parser_t *p, size_t *key, size_t *key_len, size_t *va
 
 result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields) {
     bool taken = false;
+
+    size_t line = resolve(p->src, p->ptr);
 
     for (;;) {
         size_t key, key_len, val, val_len;
@@ -274,6 +292,8 @@ result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields) {
 
             return res;
         }
+
+        // if (p->ptr >= p->len) break;
 
         log_warn("key = %.*s, val = %.*s", key_len, p->src + key, val_len, p->src + val);
 
@@ -288,16 +308,17 @@ result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields) {
         }
 
         if (!matches)
-            return PARSE_ERR(ERR_KEY_INVALID, key, p->src, .key = p->src + key, .len = key_len);
+            return PARSE_ERR(ERR_KEY_INVALID, line, "unknown key '%.*s'", key_len, p->src + key);
 
         taken = true;
     }
 
     for (parse_field_t *cur = fields; cur->key; cur++)
-        if (cur->required && !cur->taken)
-            return PARSE_ERR(ERR_KEY_REQUIRED, p->ptr, p->src, .key = cur->key);
+        if (cur->required && !cur->taken) {
+            return PARSE_ERR(ERR_KEY_REQUIRED, line, "key '%s' required", cur->key);
+        }
 
-    if (!taken) return PARSE_ERR(ERR_EXPECTED_PAIR, p->ptr, p->src);
+    if (!taken) return PARSE_ERR(ERR_EXPECTED_PAIR, line, "expected at least 1 field", "");
 
     return OK_VAL;
 }
@@ -316,7 +337,9 @@ result_t parse_osc(state_t *st, parser_t *p) {
     osc->vol = 0.0;
 
     parse_field_t fields[] = {
-        {.key = "wave", .out = &osc->kind, .required = true, .parser = extract_wave}, {NULL}};
+        {.key = "wave", .out = &osc->kind, .required = true, .parser = extract_wave},
+        {.key = "base", .out = &osc->base, .parser = extract_int},
+        {NULL}};
 
     TRY(parse_fields(st, p, fields));
 
@@ -340,6 +363,8 @@ result_t extract_wave(mem_pool_t *pool, parser_t *p, char *str, size_t len, void
     bool matched = false;
     osc_kind_t *o = (osc_kind_t *)out;
 
+    size_t line = resolve(p->src, p->ptr);
+
     for (size_t i = 0; i < OSC_MAX; i++) {
         if (strncmp(str, osc_kind_str[i], len) == 0) {
             *o = i;
@@ -348,7 +373,22 @@ result_t extract_wave(mem_pool_t *pool, parser_t *p, char *str, size_t len, void
         }
     }
 
-    if (!matched) return PARSE_ERR(ERR_EXPECTED_WAVE, p->ptr, p->src);
+    if (!matched)
+        return PARSE_ERR(ERR_EXPECTED_WAVE, line, "expected wave, found '%.*s'", len, str);
+
+    return OK_VAL;
+}
+
+result_t extract_int(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    char *endptr;
+    long long i = strtoll(str, &endptr, 10);
+
+    size_t line = resolve(p->src, p->ptr);
+
+    if ((i == LLONG_MAX || i == LLONG_MIN) || endptr == str)
+        return PARSE_ERR(ERR_INVALID_INT, line, "invalid integer '%.*s'", len, str);
+
+    *(int *)out = i;
 
     return OK_VAL;
 }

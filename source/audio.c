@@ -8,6 +8,8 @@
 #include "jack/types.h"
 #include "mem.h"
 
+#define JACK_ERR(k) ERR_VAL(ERR_JACK, "jack operation failed")
+
 char *osc_kind_str[OSC_MAX] = {[OSC_SIN] = "sin",
                                [OSC_SQUARE] = "square",
                                [OSC_TRIANGLE] = "triangle",

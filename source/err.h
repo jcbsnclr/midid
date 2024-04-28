@@ -2,7 +2,7 @@
 
 #include <jack/jack.h>
 
-typedef struct result_t {
+typedef
     enum {
         OK,
         ERR_JACK,
@@ -21,6 +21,10 @@ typedef struct result_t {
         ERR_EXPECTED_PAIR,
         ERR_EXPECTED_VALUE,
 
+        ERR_INVALID_CHAN,
+        ERR_INVALID_INT,
+        ERR_INVALID_NUM,
+
         ERR_KEY_INVALID,
 
         ERR_UNEXPECTED_EOF,
@@ -29,28 +33,19 @@ typedef struct result_t {
         ERR_EXPECTED_WAVE,
         ERR_PARSER_EOF,
         ERR_PARSER_FAILED,
-    } kind;
+    } err_kind_t;
 
-    union {
-        jack_status_t err_jack;  
-        int err_libc;
+typedef struct result_t {
+    err_kind_t kind;
+    char *msg;
 
-        struct {
-            size_t where;
-            char *src;
-            union {
-                char *exp_lit;
-                struct {
-                    char *key;
-                    size_t len;
-                };
-                char expected;
-            };
-        };
-    };
+    size_t line;
+    const char *file;
+    const char *func;
 } result_t;
 
 #define OK_VAL ((result_t){ .kind = OK })
+#define ERR_VAL(k, ...) err_impl((k), __LINE__, __FILE__, __func__, __VA_ARGS__)
 
 #define JACK_ERR(status) ((result_t){ .kind = ERR_JACK, .err_jack = (status)})
 #define LIBC_ERR(err) ((result_t){ .kind = ERR_LIBC, .err_libc = (err)})
@@ -58,9 +53,11 @@ typedef struct result_t {
 #define IS_OK .kind == OK
 #define IS_ERR .kind != OK
 
-void report_result(result_t info);
-
 #define UNWRAP(res) {result_t result = res; if ((result) IS_ERR) \
-    {log_error("fatal error"); report_result(result); exit(1);}}
+    {report_result(result); exit(1);}}
 
 #define TRY(res) {result_t result = (res); if (result IS_ERR) return result;}
+
+void report_result(result_t info);
+result_t err_impl(err_kind_t kind, size_t line, const char *file, const char *func, char *fmt, ...);
+

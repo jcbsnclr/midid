@@ -12,15 +12,6 @@
 #include "jack/types.h"
 #include "parse.h"
 
-result_t test_fail() {
-    return LIBC_ERR(EINVAL);
-}
-
-#define CMD_ERR(e)                      \
-    (result_t) {                        \
-        .kind = ERR_CMDLINE, .arg = (e) \
-    }
-
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "C");
     log_init();
