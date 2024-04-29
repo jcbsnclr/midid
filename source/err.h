@@ -1,3 +1,21 @@
+/*
+ * midid - software MIDI synthesiser, utilising JACK
+ * Copyright (C) 2024  Jacob Sinclair <jcbsnclr@outlook.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <jack/jack.h>
@@ -46,9 +64,6 @@ typedef struct result_t {
 
 #define OK_VAL ((result_t){ .kind = OK })
 #define ERR_VAL(k, ...) err_impl((k), __LINE__, __FILE__, __func__, __VA_ARGS__)
-
-#define JACK_ERR(status) ((result_t){ .kind = ERR_JACK, .err_jack = (status)})
-#define LIBC_ERR(err) ((result_t){ .kind = ERR_LIBC, .err_libc = (err)})
 
 #define IS_OK .kind == OK
 #define IS_ERR .kind != OK

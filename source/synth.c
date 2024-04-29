@@ -1,3 +1,21 @@
+/*
+ * midid - software MIDI synthesiser, utilising JACK
+ * Copyright (C) 2024  Jacob Sinclair <jcbsnclr@outlook.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include <audio.h>
 #include <log.h>
 #include <math.h>
@@ -48,6 +66,8 @@ static int rand_between(int min, int max) {
 }
 
 static float wave_sin(state_t *st, osc_t *osc, note_state_t *n, size_t i, float hz) {
+    (void)osc;
+    (void)n;
     float step = (hz * 2 * M_PI) / st->srate;
 
     return sinf(fmod(i * step, M_PI * 2));
@@ -58,6 +78,8 @@ static float wave_square(state_t *st, osc_t *osc, note_state_t *n, size_t x, flo
 }
 
 static float wave_saw(state_t *st, osc_t *osc, note_state_t *n, size_t x, float hz) {
+    (void)osc;
+    (void)n;
     // return (2.0 / M_PI) * (hz * M_PI * hz - (M_PI / 2.0));
     // return (2.0 / M_PI) * (hz * M_PI * fmod(x, 1.0 / hz)) - M_PI / 2.0;
     float step = (hz * 2 * M_PI) / st->srate;

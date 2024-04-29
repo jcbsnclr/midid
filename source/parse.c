@@ -1,3 +1,21 @@
+/*
+ * midid - software MIDI synthesiser, utilising JACK
+ * Copyright (C) 2024  Jacob Sinclair <jcbsnclr@outlook.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
@@ -283,7 +301,7 @@ result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields) {
     size_t line = resolve(p->src, p->ptr);
 
     for (;;) {
-        size_t key, key_len, val, val_len;
+        size_t key = 0, key_len = 0, val = 0, val_len = 0;
 
         result_t res = parse_pair(p, &key, &key_len, &val, &val_len);
 
@@ -339,7 +357,7 @@ result_t parse_osc(state_t *st, parser_t *p) {
     parse_field_t fields[] = {
         {.key = "wave", .out = &osc->kind, .required = true, .parser = extract_wave},
         {.key = "base", .out = &osc->base, .parser = extract_int},
-        {NULL}};
+        FIELD_LAST};
 
     TRY(parse_fields(st, p, fields));
 
@@ -354,12 +372,15 @@ result_t parse_osc(state_t *st, parser_t *p) {
 
 // extractors
 result_t extract_any(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    (void)p;
     return mem_alloc_str(pool, str, len, (char **)out);
 }
 
 #define MIN(x, y) (x < y ? x : y)
 
 result_t extract_wave(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    (void)pool;
+
     bool matched = false;
     osc_kind_t *o = (osc_kind_t *)out;
 
@@ -380,6 +401,8 @@ result_t extract_wave(mem_pool_t *pool, parser_t *p, char *str, size_t len, void
 }
 
 result_t extract_int(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    (void)pool;
+
     char *endptr;
     long long i = strtoll(str, &endptr, 10);
 

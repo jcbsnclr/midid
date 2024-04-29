@@ -19,4 +19,8 @@ pkgs.mkShell rec {
   ];
 
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
+
+  shellHook = ''
+    export PATH="$PWD/util:$PATH"
+  '';
 }
