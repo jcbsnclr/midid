@@ -20,8 +20,8 @@ DBG?=gdb
 CSRC:=$(wildcard source/*.c)
 COBJ:=$(patsubst source/%.c, build/%.c.o, $(CSRC))
 
-CFLAGS+=-Og -g -Wall -Wextra  -Werror -Isource/ -c -MMD
-LFLAGS+=-lm
+CFLAGS+=-Og -g -Wall -Wextra  -Werror -Isource/ -c -MMD -fsanitize=undefined -fstack-protector-strong
+LFLAGS+=-lm -fsanitize=undefined -fstack-protector-strong
 
 DEPS:=jack
 

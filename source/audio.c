@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <ansi.h>
 #include <audio.h>
 #include <log.h>
 #include <string.h>
@@ -55,12 +56,11 @@ static void midi_process(state_t *st, void *midi_buf) {
 
         // MIDI event params
         uint8_t kind = ev.buffer[MIDI_STATUS] & 0xf0;
-        uint8_t chan = ev.buffer[MIDI_STATUS] & 0x0f;
 
-        for (size_t i = 0; i < st->inst_len; i++) {
-            instrument_t *inst = &st->inst_pool[i];
+        chan_t *chan = &st->chans[ev.buffer[MIDI_STATUS] & 0x0f];
 
-            if (chan != inst->chan) continue;
+        for (size_t i = 0; i < chan->len; i++) {
+            instrument_t *inst = chan->insts[i];
 
             switch (kind) {
                 case NOTE_ON: {
@@ -71,12 +71,12 @@ static void midi_process(state_t *st, void *midi_buf) {
                               note,
                               vel,
                               chan,
-                              inst->osc1.kind,
+                              inst->osc1->kind,
                               i);
                     if (vel != 0)
-                        inst->active[note].stage = inst->env.start;
-                    else if (inst->env.done)
-                        inst->active[note].stage = inst->env.done;
+                        inst->active[note].stage = inst->env->start;
+                    else if (inst->env->done)
+                        inst->active[note].stage = inst->env->done;
 
                     inst->active[note].note = note;
                     inst->active[note].velocity = vel;
@@ -93,7 +93,7 @@ static void midi_process(state_t *st, void *midi_buf) {
                     //           chan,
                     //           inst->osc.kind,
                     //           i);
-                    if (inst->env.done) inst->active[note].stage = inst->env.done;
+                    if (inst->env->done) inst->active[note].stage = inst->env->done;
                     inst->active[note].time = st->time;
                     inst->active[note].start_ramp = inst->active[note].ramp;
                 } break;
@@ -104,12 +104,12 @@ static void midi_process(state_t *st, void *midi_buf) {
 
                     switch (cc) {
                         case 1: {
-                            inst->osc1.bias = (float)val / 127.f;
+                            inst->osc1->bias = (float)val / 127.f;
                         } break;
 
                         case 12: {
-                            inst->osc1.kind = ((float)val / 127.f) * (OSC_MAX - 1);
-                            log_trace("lol %d", inst->osc1.kind);
+                            inst->osc1->kind = ((float)val / 127.f) * (OSC_MAX - 1);
+                            log_trace("lol %d", inst->osc1->kind);
                         } break;
 
                         default:
@@ -143,8 +143,11 @@ static int process(jack_nframes_t nframes, void *arg) {
     for (size_t i = 0; i < nframes; i++) {
         output_buf[i] = 0.0;
 
-        for (size_t j = 0; j < st->inst_len; j++) {
-            output_buf[i] += osc_sample(st, &st->inst_pool[j]);
+        for (size_t c = 0; c < 16; c++) {
+            chan_t *chan = &st->chans[c];
+            for (size_t j = 0; j < chan->len; j++) {
+                output_buf[i] += osc_sample(st, chan->insts[j]);
+            }
         }
     }
 
@@ -197,32 +200,11 @@ result_t state_init(state_t *st) {
     st->volume = 0.5;
     st->channel = 0;
 
-    st->inst_len = 0;
+    for (size_t i = 0; i < 16; i++) {
+        chan_t *chan = &st->chans[i];
 
-    for (size_t j = 0; j < INSTRUMENTS; j++) {
-        instrument_t *inst = &st->inst_pool[j];
-
-        // inst->active_recent = 0;
-        inst->env.start = NULL;
-        inst->env.done = NULL;
-        inst->chan = 255;
-
-        inst->osc1.base = 0;
-        inst->osc1.kind = OSC_SIN;
-        inst->osc1.vol = 0.5;
-
-        for (size_t i = 0; i < VOICES; i++) {
-            note_state_t *ns = &inst->active[i];
-
-            ns->note = i;
-            ns->velocity = 0;
-            ns->idx = 0;
-            ns->phase = 0.0;
-            ns->start_ramp = 0.0;
-            ns->ramp = 0.0;
-            ns->stage = NULL;
-            ns->time = 0;
-        }
+        chan->len = 0;
+        memset(chan->insts, 0, sizeof(instrument_t *));
     }
 
     return OK_VAL;
@@ -234,4 +216,72 @@ void state_free(state_t *st) {
 
     jack_deactivate(st->client);
     jack_client_close(st->client);
+}
+
+void log_state(state_t *st) {
+    log_info("application state:");
+    log_line("  map:");
+    for (size_t i = 0; i < BUCKETS; i++) {
+        map_bucket_t *b = st->map.buckets[i];
+
+        while (b) {
+            log_line("     " ANSI_FG_GREEN "%s " ANSI_RESET "%.*s:",
+                     obj_kind_str[b->kind],
+                     b->key_len,
+                     b->key);
+
+            osc_t *osc;
+            env_t *env;
+            instrument_t *inst;
+
+            (void)env;
+            (void)inst;
+
+            switch (b->kind) {
+                case OBJ_OSC:
+                    osc = (osc_t *)b->val;
+                    log_line("       wave=%s", osc_kind_str[osc->kind]);
+                    log_line("       base=%lld", osc->base);
+                    log_line("       bias=%f", osc->bias);
+                    log_line("       vol=%f", osc->vol);
+                    break;
+
+                case OBJ_ENV:
+                    env = (env_t *)b->val;
+                    env_stage_t *cur = env->start;
+
+                    while (cur) {
+                        log_line("       %f over %lldμs", cur->amp, cur->time);
+                        cur = cur->next;
+                    }
+
+                    break;
+
+                case OBJ_INST:
+                    inst = (instrument_t *)b->val;
+
+                    log_line("       %s %% %s", inst->osc1->name, inst->osc2->name);
+
+                    break;
+
+                default:
+                    log_line("      unknown");
+                    break;
+            }
+
+            b = b->next;
+        }
+    }
+
+    log_line("  chans:");
+
+    for (size_t i = 0; i < 16; i++) {
+        if (st->chans[i].len == 0) continue;
+
+        log_line("    chan %llu:", i);
+
+        for (size_t j = 0; j < st->chans[i].len; j++) {
+            log_line("      %s", st->chans[i].insts[j]->name);
+        }
+    }
 }

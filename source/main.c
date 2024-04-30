@@ -43,9 +43,10 @@ int main(int argc, char **argv) {
     bool activate = true;
 
     int c;
-    while ((c = getopt(argc, argv, "li:o:I:E:O:")) != -1) {
+    parser_t p;
+    while ((c = getopt(argc, argv, "li:o:I:E:O:C:")) != -1) {
         switch (c) {
-            case 'l':
+            case 'l':  // list available MIDI/audio ports
                 ports = jack_get_ports(st.client, "", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput);
                 if (!ports) {
                     log_error("no MIDI ports found");
@@ -74,7 +75,7 @@ int main(int argc, char **argv) {
 
                 return 0;
 
-            case 'i':
+            case 'i':  // connects MIDI input to ports matching regex
                 ports = jack_get_ports(st.client, optarg, JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput);
                 if (!ports) {
                     log_error("no MIDI ports found");
@@ -90,7 +91,7 @@ int main(int argc, char **argv) {
                 jack_free(ports);
                 break;
 
-            case 'o':
+            case 'o':  // connects audio output to ports matching regex
                 ports = jack_get_ports(st.client, optarg, JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput);
                 if (!ports) {
                     log_error("no audio ports found");
@@ -107,20 +108,23 @@ int main(int argc, char **argv) {
                 break;
 
             case 'I':
-                log_warn("flag '%c' unimplemented", c);
+                parser_init(&p, optarg);
+                UNWRAP(parse_inst(&st, &p));
                 break;
 
-            case 'E':
-                activate = false;
-                parser_t p;
+            case 'E':  // parse an envelope
                 parser_init(&p, optarg);
                 UNWRAP(parse_env(&st, &p));
                 break;
 
-            case 'O':
-                activate = false;
+            case 'O':  // parse an instrument
                 parser_init(&p, optarg);
                 UNWRAP(parse_osc(&st, &p));
+                break;
+
+            case 'C':
+                parser_init(&p, optarg);
+                UNWRAP(parse_chan(&st, &p));
                 break;
 
             case '?':
@@ -133,6 +137,8 @@ int main(int argc, char **argv) {
                 return 1;
         }
     }
+
+    log_state(&st);
 
     if (activate) {
         log_info("activating JACK client");

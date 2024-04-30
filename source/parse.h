@@ -51,5 +51,6 @@ result_t extract_wave(mem_pool_t *pool, parser_t *p, char *str, size_t len, void
 result_t extract_int(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out);
 result_t extract_byte(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out);
 result_t extract_float(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out);
+result_t extract_level(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out);
 
 result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields);

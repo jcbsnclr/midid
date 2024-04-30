@@ -24,6 +24,7 @@
 #include <mem.h>
 #include <parse.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "audio.h"
@@ -186,6 +187,30 @@ static result_t take_num(parser_t *p, size_t *start, size_t *len) {
     return OK_VAL;
 }
 
+static result_t take_int(parser_t *p, size_t *start, size_t *len) {
+    *start = p->ptr;
+    *len = 0;
+
+    size_t line = resolve(p->src, *start);
+    if (p->ptr >= p->len)
+        return PARSE_ERR(ERR_EXPECTED_NUM, line, "expected number, found EOF", "");
+
+    if (p->ptr + 1 < p->len && strncmp(p->src + *start, "->", 2) == 0)
+        return PARSE_ERR(ERR_EXPECTED_NUM, line, "expected number, found '->'", "");
+
+    take_ifc(p, '-');
+    take_ifc(p, '+');
+
+    if (take_ifc(p, '.'))
+        return PARSE_ERR(
+            ERR_EXPECTED_INT, line, "expected integer, found number '%.*s'", *len, p->src + *start);
+
+    if (!take_while(p, is_digit))
+        return PARSE_ERR(ERR_EXPECTED_NUM, line, "expected number, found '%c'", p->src[*start]);
+
+    return OK_VAL;
+}
+
 static result_t parse_env_stage(parser_t *p, size_t *start, env_stage_t *env) {
     skip_ws(p);
     *start = p->ptr;
@@ -259,16 +284,8 @@ result_t parse_env(state_t *st, parser_t *p) {
 
     skip_comment(p);
 
-    log_trace("env %.*s:", name_len, p->src + name);
-    env_stage_t *x = env->start;
-    for (int i = 0; x; i++) {
-        log_line("  [%d] time = %lu, amp = %f", i, x->time, x->amp);
-        x = x->next;
-    }
-
+    TRY(mem_alloc_str(&st->pool, p->src + name, name_len, &env->name));
     TRY(map_insert(&st->map, p->src + name, name_len, (void *)env, OBJ_ENV));
-
-    map_print(&st->map);
 
     skip_ws(p);
 
@@ -313,8 +330,6 @@ result_t parse_fields(state_t *st, parser_t *p, parse_field_t *fields) {
 
         // if (p->ptr >= p->len) break;
 
-        log_warn("key = %.*s, val = %.*s", key_len, p->src + key, val_len, p->src + val);
-
         bool matches = false;
 
         for (parse_field_t *cur = fields; cur->key; cur++) {
@@ -353,17 +368,20 @@ result_t parse_osc(state_t *st, parser_t *p) {
     osc->bias = 0.0;
     osc->kind = OSC_SIN;
     osc->vol = 0.0;
+    osc->hz = 0;
 
     parse_field_t fields[] = {
         {.key = "wave", .out = &osc->kind, .required = true, .parser = extract_wave},
-        {.key = "base", .out = &osc->base, .parser = extract_int},
+        {.key = "base", .out = &osc->base, .required = false, .parser = extract_int},
+        {.key = "vol", .out = &osc->vol, .required = true, .parser = extract_level},
+        {.key = "bias", .out = &osc->bias, .required = false, .parser = extract_level},
+        {.key = "hz", .out = &osc->hz, .required = false, .parser = extract_int},
         FIELD_LAST};
 
     TRY(parse_fields(st, p, fields));
-
-    log_info("WAVE KIND %s", osc_kind_str[osc->kind]);
-
     skip_comment(p);
+
+    TRY(mem_alloc_str(&st->pool, p->src + name, name_len, &osc->name));
 
     TRY(map_insert(&st->map, p->src + name, name_len, osc, OBJ_OSC));
 
@@ -408,10 +426,123 @@ result_t extract_int(mem_pool_t *pool, parser_t *p, char *str, size_t len, void 
 
     size_t line = resolve(p->src, p->ptr);
 
-    if ((i == LLONG_MAX || i == LLONG_MIN) || endptr == str)
+    if (i == LLONG_MAX || i == LLONG_MIN || endptr == str)
         return PARSE_ERR(ERR_INVALID_INT, line, "invalid integer '%.*s'", len, str);
 
-    *(int *)out = i;
+    *(int64_t *)out = i;
+
+    return OK_VAL;
+}
+
+result_t extract_level(mem_pool_t *pool, parser_t *p, char *str, size_t len, void *out) {
+    (void)pool;
+    (void)p;
+
+    char *end;
+    float val = strtof(str, &end);
+
+    size_t line = resolve(p->src, p->ptr);
+
+    if (end != str + len)
+        return PARSE_ERR(ERR_INVALID_LEVEL, line, "invalid level '%.*s'", len, str);
+
+    if (val < 0.0 || val > 1.0)
+        return PARSE_ERR(
+            ERR_INVALID_LEVEL, line, "level '%.*s' out of range '0.0 -> 1.0'", len, str);
+
+    *(float *)out = val;
+
+    return OK_VAL;
+}
+
+result_t parse_inst(state_t *st, parser_t *p) {
+    (void)st;
+    (void)p;
+
+    instrument_t *inst;
+    TALLOC(&st->pool, &inst);
+
+    size_t name, name_len;
+    TRY(take_ident(p, &name, &name_len));
+    skip_ws(p);
+
+    size_t env, env_len;
+    TRY(take_name(p, &env, &env_len));
+    skip_ws(p);
+
+    size_t line = resolve(p->src, name);
+
+    size_t osc1, osc1_len;
+    size_t osc2, osc2_len;
+
+    TRY(take_ident(p, &osc1, &osc1_len));
+    skip_ws(p);
+    TRY_IFC(p, '%');
+    skip_ws(p);
+    TRY(take_ident(p, &osc2, &osc2_len));
+
+    inst->osc1 = (osc_t *)map_get(&st->map, p->src + osc1, osc1_len, OBJ_OSC);
+    inst->osc2 = (osc_t *)map_get(&st->map, p->src + osc2, osc2_len, OBJ_OSC);
+    inst->env = (env_t *)map_get(&st->map, p->src + env, env_len, OBJ_ENV);
+
+    if (!inst->osc1)
+        return PARSE_ERR(
+            ERR_UNKNOWN_OBJ, line, "no such oscillator '%.*s'", osc1_len, p->src + osc1);
+    if (!inst->osc2)
+        return PARSE_ERR(
+            ERR_UNKNOWN_OBJ, line, "no such oscillator '%.*s'", osc2_len, p->src + osc2);
+    if (!inst->env)
+        return PARSE_ERR(ERR_UNKNOWN_OBJ, line, "no such envelope '%.*s'", env_len, p->src + env);
+
+    TRY(mem_alloc_str(&st->pool, p->src + name, name_len, &inst->name));
+    TRY(map_insert(&st->map, p->src + name, name_len, inst, OBJ_INST));
+
+    return OK_VAL;
+}
+
+result_t parse_chan(state_t *st, parser_t *p) {
+    (void)st;
+    (void)p;
+
+    size_t idx, idx_len;
+    TRY(take_int(p, &idx, &idx_len));
+    TRY_IFC(p, ':');
+    skip_ws(p);
+
+    size_t line = resolve(p->src, idx);
+
+    int64_t i = strtoll(p->src + idx, NULL, 10);
+
+    bool taken = false;
+
+    for (;;) {
+        size_t name, name_len;
+        result_t res = take_ident(p, &name, &name_len);
+
+        if (res IS_ERR) {
+            free(res.msg);
+            break;
+        }
+
+        skip_ws(p);
+
+        if (st->chans[i].len >= INSTRUMENTS)
+            return PARSE_ERR(
+                ERR_PARSER_FAILED, line, "a channel can only have %d instruments", INSTRUMENTS);
+
+        taken = true;
+
+        instrument_t *inst = (instrument_t *)map_get(&st->map, p->src + name, name_len, OBJ_INST);
+
+        if (!inst)
+            return PARSE_ERR(
+                ERR_UNKNOWN_OBJ, line, "no such instrument '%.*s'", name_len, p->src + name);
+
+        st->chans[i].insts[st->chans[i].len++] = inst;
+    }
+
+    if (!taken)
+        return PARSE_ERR(ERR_EXPECTED_IDENT, line, "channel needs at least 1 instrument", "");
 
     return OK_VAL;
 }

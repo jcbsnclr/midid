@@ -105,12 +105,12 @@ static wave_fn_t wave_fn_table[] = {
     [OSC_NOISE] = wave_noise,
 };
 
-static float gen_wave(osc_t *osc, instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
-    int8_t note = (voice->note + osc->base) - 69;
-    float hz = powf(2, (float)note / 12.) * 440.;
+static float gen_wave(instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
+    int8_t note1 = (voice->note + inst->osc1->base) - 69;
+    int8_t note2 = (voice->note + inst->osc2->base) - 69;
 
-    float hz_fm = powf(2, ((float)note - 24.) / 12.) * 440.;
-    // float hz_fm = 1000;
+    float hz1 = powf(2, (float)note1 / 12.) * 440.;
+    float hz2 = powf(2, (float)note2 / 12.) * 440.;
 
     env_process(st, voice);
 
@@ -118,10 +118,16 @@ static float gen_wave(osc_t *osc, instrument_t *inst, state_t *st, size_t i, not
 f (t) = A sin(2πCt + D sin(2πM t))
         */
 
-    float mod = wave_fn_table[inst->osc2.kind](st, osc, voice, i, hz_fm);  // modulator
+    float mod = wave_fn_table[inst->osc2->kind](
+        st, inst->osc2, voice, i, inst->osc2->hz != 0 ? (float)inst->osc2->hz : hz2);  // modulator
     // float car = wave_fn_table[osc->kind](st, osc, voice, i, hz);           // carrier
 
-    return voice->ramp * wave_fn_table[osc->kind](st, osc, voice, i, hz * mod);
+    return voice->ramp * wave_fn_table[inst->osc1->kind](
+                             st,
+                             inst->osc1,
+                             voice,
+                             i,
+                             inst->osc1->hz != 0 ? (float)inst->osc1->hz * mod : hz1 * mod);
 }
 
 float osc_sample(state_t *st, instrument_t *inst) {
@@ -133,7 +139,7 @@ float osc_sample(state_t *st, instrument_t *inst) {
 
         if (voice->stage != NULL) {
             // X(4);
-            sample += gen_wave(&inst->osc1, inst, st, voice->idx, voice);
+            sample += gen_wave(inst, st, voice->idx, voice);
         }
 
         voice->idx += 1;
@@ -142,7 +148,7 @@ float osc_sample(state_t *st, instrument_t *inst) {
     // X(6);
 
     // float out = (sample / voices) * osc->vol;
-    float out = sample * inst->osc1.vol;
+    float out = sample * inst->osc1->vol;
 
     // log_warn("out = %f", out);
 

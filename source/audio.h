@@ -37,6 +37,7 @@ typedef struct env_stage_t {
 } env_stage_t;
 
 typedef struct env_t {
+    char *name;
     env_stage_t *start;
     env_stage_t *done;
 } env_t;
@@ -90,19 +91,28 @@ typedef struct osc_t {
     int64_t base;
     float vol;
     float bias;
+
+    int hz;
+
+    char *name;
 } osc_t;
 
 #define VOICES 128
-#define INSTRUMENTS 64
+#define INSTRUMENTS 4
 #define ENVELOPES 256
 
 typedef struct instrument_t {
+    char *name;
     note_state_t active[VOICES];
-    uint8_t chan;
-    env_t env;
-    osc_t osc1;
-    osc_t osc2;
+    env_t *env;
+    osc_t *osc1;
+    osc_t *osc2;
 } instrument_t;
+
+typedef struct chan_t {
+    size_t len;
+    instrument_t *insts[INSTRUMENTS];
+} chan_t;
 
 typedef struct state_t {
     mem_pool_t pool;
@@ -117,12 +127,13 @@ typedef struct state_t {
     float volume;
     jack_time_t time;
 
-    instrument_t inst_pool[INSTRUMENTS];
-    size_t inst_len;
+    chan_t chans[16];
 } state_t;
 
 extern char *osc_kind_str[OSC_MAX];
 
 result_t state_init(state_t *st);
 void state_free(state_t *st);
+
+void log_state(state_t *st);
 

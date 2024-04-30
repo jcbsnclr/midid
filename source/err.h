@@ -39,9 +39,12 @@ typedef
         ERR_EXPECTED_PAIR,
         ERR_EXPECTED_VALUE,
 
+        ERR_UNKNOWN_OBJ,
+
         ERR_INVALID_CHAN,
         ERR_INVALID_INT,
         ERR_INVALID_NUM,
+        ERR_INVALID_LEVEL,
 
         ERR_KEY_INVALID,
 
