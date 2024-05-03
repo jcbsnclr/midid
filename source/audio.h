@@ -101,7 +101,7 @@ typedef struct osc_t {
 #define INSTRUMENTS 4
 #define ENVELOPES 256
 
-typedef struct instrument_t {
+typedef struct inst_t {
     char *name;
     note_state_t active[VOICES];
     env_t *env;

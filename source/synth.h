@@ -22,4 +22,4 @@
 
 #include <audio.h>
 
-float osc_sample(state_t *st, instrument_t *inst);
+float inst_sample(state_t *st, instrument_t *inst);

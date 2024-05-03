@@ -146,7 +146,7 @@ static int process(jack_nframes_t nframes, void *arg) {
         for (size_t c = 0; c < 16; c++) {
             chan_t *chan = &st->chans[c];
             for (size_t j = 0; j < chan->len; j++) {
-                output_buf[i] += osc_sample(st, chan->insts[j]);
+                output_buf[i] += inst_sample(st, chan->insts[j]);
             }
         }
     }

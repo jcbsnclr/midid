@@ -33,8 +33,8 @@ phase = phase + ((2 * pi * f) / samplerate)
 if phase > (2 * pi) then
       phase = phase - (2 * pi)*/
 
-#define ATTACK_TIME SECS(1)
-#define ADJUST_TIME SECS(1)
+// #define ATTACK_TIME SECS(1)
+// #define ADJUST_TIME SECS(1)
 
 static float lerp(state_t *st, note_state_t *voice, float base, float to, jack_time_t time) {
     jack_time_t rel_time = st->time - voice->time;
@@ -70,7 +70,8 @@ static float wave_sin(state_t *st, osc_t *osc, note_state_t *n, size_t i, float 
     (void)n;
     float step = (hz * 2 * M_PI) / st->srate;
 
-    return sinf(fmod(i * step, M_PI * 2));
+    // return sinf(fmod(i * step, M_PI * 2));
+    return sinf(i * step);
 }
 
 static float wave_square(state_t *st, osc_t *osc, note_state_t *n, size_t x, float hz) {
@@ -95,7 +96,7 @@ static float wave_noise(state_t *st, osc_t *osc, note_state_t *n, size_t x, floa
     return wave_sin(st, osc, n, x, hz) * (float)rand_between(-100, 100) / 100.f;
 }
 
-typedef float (*wave_fn_t)(state_t *st, osc_t *, note_state_t *, size_t, float);
+typedef float (*wave_fn_t)(state_t *, osc_t *, note_state_t *, size_t, float);
 
 static wave_fn_t wave_fn_table[] = {
     [OSC_SIN] = wave_sin,
@@ -105,50 +106,49 @@ static wave_fn_t wave_fn_table[] = {
     [OSC_NOISE] = wave_noise,
 };
 
-static float gen_wave(instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
-    int8_t note1 = (voice->note + inst->osc1->base) - 69;
-    int8_t note2 = (voice->note + inst->osc2->base) - 69;
+#define A4_MIDI 69
+#define A4_HZ 440.f
 
-    float hz1 = powf(2, (float)note1 / 12.) * 440.;
-    float hz2 = powf(2, (float)note2 / 12.) * 440.;
-
-    env_process(st, voice);
-
-    /*
-f (t) = A sin(2πCt + D sin(2πM t))
-        */
-
-    float mod = wave_fn_table[inst->osc2->kind](
-        st, inst->osc2, voice, i, inst->osc2->hz != 0 ? (float)inst->osc2->hz : hz2);  // modulator
-    // float car = wave_fn_table[osc->kind](st, osc, voice, i, hz);           // carrier
-
-    return voice->ramp * wave_fn_table[inst->osc1->kind](
-                             st,
-                             inst->osc1,
-                             voice,
-                             i,
-                             inst->osc1->hz != 0 ? (float)inst->osc1->hz * mod : hz1 * mod);
+static float semi_hz(int16_t semi) {
+    return powf(2, (float)(semi - A4_MIDI) / 12.) * A4_HZ;
 }
 
-float osc_sample(state_t *st, instrument_t *inst) {
+static float gen_wave(instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
+    (void)st;
+    (void)wave_fn_table;
+
+    float car_hz = semi_hz(voice->note + inst->osc1->base);
+    float mod_hz = semi_hz(voice->note + inst->osc2->base);
+
+    float car_step = (2 * M_PI * car_hz) / st->srate;
+    float mod_step = (2 * M_PI * mod_hz) / st->srate;
+
+    float mod_samp = inst->osc2->vol * sinf(mod_step * i);
+
+    return voice->ramp * inst->osc1->vol * sinf(car_step * i + mod_samp);
+}
+
+float inst_sample(state_t *st, instrument_t *inst) {
+    //  0.15191
+    // log_error("LOL %f", semi_hz(-69));
+
     // X(1);
     float sample = 0.0;
     for (size_t i = 0; i < VOICES; i++) {
         // X(2);
         note_state_t *voice = &inst->active[i];
+        env_process(st, voice);
 
         if (voice->stage != NULL) {
             // X(4);
-            sample += gen_wave(inst, st, voice->idx, voice);
+            sample += gen_wave(inst, st, voice->idx++, voice);
         }
-
-        voice->idx += 1;
     }
 
     // X(6);
 
     // float out = (sample / voices) * osc->vol;
-    float out = sample * inst->osc1->vol;
+    float out = sample * 0.5;
 
     // log_warn("out = %f", out);
 
