@@ -65,38 +65,30 @@ static int rand_between(int min, int max) {
     return rand() % (max - min + 1) + min;
 }
 
-static float wave_sin(state_t *st, osc_t *osc, note_state_t *n, size_t i, float hz) {
+static float wave_sin(osc_t *osc, float x) {
     (void)osc;
-    (void)n;
-    float step = (hz * 2 * M_PI) / st->srate;
-
-    // return sinf(fmod(i * step, M_PI * 2));
-    return sinf(i * step);
+    return sinf(x);
 }
 
-static float wave_square(state_t *st, osc_t *osc, note_state_t *n, size_t x, float hz) {
-    return wave_sin(st, osc, n, x, hz) > osc->bias ? 1.0 : -1.0;
+static float wave_square(osc_t *osc, float x) {
+    return wave_sin(osc, x) > osc->bias ? 1.0 : -1.0;
 }
 
-static float wave_saw(state_t *st, osc_t *osc, note_state_t *n, size_t x, float hz) {
+static float wave_triangle(osc_t *osc, float x) {
+    return asinf(wave_sin(osc, x));
+}
+
+static float wave_saw(osc_t *osc, float x) {
     (void)osc;
-    (void)n;
-    // return (2.0 / M_PI) * (hz * M_PI * hz - (M_PI / 2.0));
-    // return (2.0 / M_PI) * (hz * M_PI * fmod(x, 1.0 / hz)) - M_PI / 2.0;
-    float step = (hz * 2 * M_PI) / st->srate;
-    return 2 * (fmod(x * step, 1) - 0.5);
+    return 2 * (fmod(x, 1) - 0.5);
 }
 
-static float wave_triangle(state_t *st, osc_t *osc, note_state_t *n, size_t x, float hz) {
-    // return asinf(sinf(x) * 2.0 / M_PI);
-    return asinf(wave_sin(st, osc, n, x, hz));
+static float wave_noise(osc_t *osc, float x) {
+    return wave_sin(osc, x) * (float)rand_between(-100, 100) / 100.f;
 }
 
-static float wave_noise(state_t *st, osc_t *osc, note_state_t *n, size_t x, float hz) {
-    return wave_sin(st, osc, n, x, hz) * (float)rand_between(-100, 100) / 100.f;
-}
-
-typedef float (*wave_fn_t)(state_t *, osc_t *, note_state_t *, size_t, float);
+// type of a wave function
+typedef float (*wave_fn_t)(osc_t *osc, float x);
 
 static wave_fn_t wave_fn_table[] = {
     [OSC_SIN] = wave_sin,
@@ -109,38 +101,40 @@ static wave_fn_t wave_fn_table[] = {
 #define A4_MIDI 69
 #define A4_HZ 440.f
 
+// converts a MIDI note number to a frequency in hz
 static float semi_hz(int16_t semi) {
     return powf(2, (float)(semi - A4_MIDI) / 12.) * A4_HZ;
 }
 
 static float gen_wave(instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
-    (void)st;
-    (void)wave_fn_table;
-
+    // work out frequency for carrier and modulator wave
     float car_hz = semi_hz(voice->note + inst->osc1->base);
     float mod_hz = semi_hz(voice->note + inst->osc2->base);
 
+    // calculate step, used to map from real time to 0 -> PI
     float car_step = (2 * M_PI * car_hz) / st->srate;
     float mod_step = (2 * M_PI * mod_hz) / st->srate;
 
-    float mod_samp = inst->osc2->vol * sinf(mod_step * i);
+    // retrieve wave functions
+    wave_fn_t car_fn = wave_fn_table[inst->osc1->kind];
+    wave_fn_t mod_fn = wave_fn_table[inst->osc2->kind];
 
-    return voice->ramp * inst->osc1->vol * sinf(car_step * i + mod_samp);
+    // sample modulator wave
+    float mod_samp = inst->osc2->vol * mod_fn(inst->osc2, mod_step * i);
+
+    // modulate frequency of carrier wave by modulator wave sample as final asmple
+    return voice->ramp * inst->osc1->vol * car_fn(inst->osc1, car_step * i + mod_samp);
 }
 
 float inst_sample(state_t *st, instrument_t *inst) {
-    //  0.15191
-    // log_error("LOL %f", semi_hz(-69));
-
-    // X(1);
     float sample = 0.0;
     for (size_t i = 0; i < VOICES; i++) {
-        // X(2);
         note_state_t *voice = &inst->active[i];
+        // process note envelope
         env_process(st, voice);
 
         if (voice->stage != NULL) {
-            // X(4);
+            // if note is active, generate a sample and add it to the current sample
             sample += gen_wave(inst, st, voice->idx++, voice);
         }
     }

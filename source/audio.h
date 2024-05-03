@@ -101,6 +101,12 @@ typedef struct osc_t {
 #define INSTRUMENTS 4
 #define ENVELOPES 256
 
+typedef enum {
+    MOD_AM,
+    MOD_FM,
+    MOD_PM
+} mod_kind_t;
+
 typedef struct inst_t {
     char *name;
     note_state_t active[VOICES];
