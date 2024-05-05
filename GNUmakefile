@@ -45,7 +45,7 @@ run: $(BIN)
 	./$(BIN) $(RUNARGS) 
 
 debug: $(BIN)
-	$(DBG) $(BIN)
+	$(DBG) -x util/gdb.txt --args $(BIN) -E "donk: 0.05s1.0 -> 0.2s0.5 -> SUST -> 0.6s0.0"   -O "o: wave=sin vol=1.0"   -I "foo donk: o * o"   -I "bar donk: o * o"
 
 clean: 
 	rm -rf build/

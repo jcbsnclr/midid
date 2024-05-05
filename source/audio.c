@@ -19,6 +19,7 @@
 #include <ansi.h>
 #include <audio.h>
 #include <log.h>
+#include <stdio.h>
 #include <string.h>
 #include <synth.h>
 
@@ -34,6 +35,13 @@ char *osc_kind_str[OSC_MAX] = {[OSC_SIN] = "sin",
                                [OSC_TRIANGLE] = "triangle",
                                [OSC_SAW] = "saw",
                                [OSC_NOISE] = "noise"};
+
+char mod_kind_char[MOD_MAX] = {
+    [MOD_AM] = '*',
+    [MOD_FM] = '%',
+    [MOD_PM] = '+',
+    [MOD_BM] = '-',
+};
 
 static void jack_error_report(const char *msg) {
     log_trace("JACK: %s", msg);
@@ -67,12 +75,8 @@ static void midi_process(state_t *st, void *midi_buf) {
                     uint8_t note = ev.buffer[MIDI_NOTE];
                     uint8_t vel = ev.buffer[MIDI_VEL];
 
-                    log_trace("note on (note = %d, vel = %d, chan = %d, wave = %d, inst = %d)",
-                              note,
-                              vel,
-                              chan,
-                              inst->osc1->kind,
-                              i);
+                    log_trace(
+                        "note on (note = %d, vel = %d, chan = %d, inst = %d)", note, vel, chan, i);
                     if (vel != 0)
                         inst->active[note].stage = inst->env->start;
                     else if (inst->env->done)
@@ -164,7 +168,7 @@ static int srate(jack_nframes_t nframes, void *arg) {
 
 result_t state_init(state_t *st) {
     log_info("allocating memory pool");
-    TRY(mem_init(&st->pool, MiB(8)));
+    TRY(mem_init(&st->pool, MiB(64)));
 
     log_info("creating object map");
     TRY(map_init(&st->map));
@@ -251,7 +255,10 @@ void log_state(state_t *st) {
                     env_stage_t *cur = env->start;
 
                     while (cur) {
-                        log_line("       %f over %lldμs", cur->amp, cur->time);
+                        if (cur->time == ENV_SUSTAIN)
+                            log_line("       SUST");
+                        else
+                            log_line("       %f over %lldμs", cur->amp, cur->time);
                         cur = cur->next;
                     }
 
@@ -260,7 +267,21 @@ void log_state(state_t *st) {
                 case OBJ_INST:
                     inst = (instrument_t *)b->val;
 
-                    log_line("       %s %% %s", inst->osc1->name, inst->osc2->name);
+                    char *line = "               ⤷        ";
+
+                    osc_link_t *c = inst->links;
+                    fprintf(stderr, "%s", line);
+                    while (c) {
+                        fprintf(stderr, "%s ", c->osc->name);
+                        if (c->next) fprintf(stderr, "%c ", mod_kind_char[c->method]);
+
+                        c = c->next;
+                    }
+                    fprintf(stderr, "\n");
+                    // log_line("       %s %c %s",
+                    //          inst->osc1->name,
+                    //          mod_kind_char[inst->method],
+                    //          inst->osc2->name);
 
                     break;
 

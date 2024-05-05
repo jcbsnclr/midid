@@ -65,30 +65,52 @@ static int rand_between(int min, int max) {
     return rand() % (max - min + 1) + min;
 }
 
-static float wave_sin(osc_t *osc, float x) {
-    (void)osc;
-    return sinf(x);
+float fold(float x, float threshold) {
+    float sign = 1.0f;
+    if (x < 0.0f) sign = -1.0;
+
+    x *= sign;
+    if (x > threshold) {
+        const float remainder = fmod(x, threshold);
+        const int numFolds = (int)floor(x / threshold);
+
+        float y;
+        if (numFolds % 2 == 0)
+            y = remainder;
+        else
+            y = threshold - remainder;
+        return y * sign;
+    }
+    return x * sign;
+}
+static float wave_sin(float x, float bias) {
+    float samp = sinf(x);
+
+    return fold(samp, 1.0 - bias);
 }
 
-static float wave_square(osc_t *osc, float x) {
-    return wave_sin(osc, x) > osc->bias ? 1.0 : -1.0;
+static float wave_square(float x, float bias) {
+    return sinf(x) > bias ? 1.0 : -1.0;
 }
 
-static float wave_triangle(osc_t *osc, float x) {
-    return asinf(wave_sin(osc, x));
+static float wave_triangle(float x, float bias) {
+    return asinf(wave_sin(x, bias));
 }
 
-static float wave_saw(osc_t *osc, float x) {
-    (void)osc;
-    return 2 * (fmod(x, 1) - 0.5);
+static float wave_saw(float x, float bias) {
+    (void)bias;
+
+    float s = 2 * (fmod(x, 1) - 0.5);
+
+    return fold(s, bias);
 }
 
-static float wave_noise(osc_t *osc, float x) {
-    return wave_sin(osc, x) * (float)rand_between(-100, 100) / 100.f;
+static float wave_noise(float x, float bias) {
+    return wave_sin(x, bias) * (float)rand_between(-100, 100) / 100.f;
 }
 
 // type of a wave function
-typedef float (*wave_fn_t)(osc_t *osc, float x);
+typedef float (*wave_fn_t)(float x, float bias);
 
 static wave_fn_t wave_fn_table[] = {
     [OSC_SIN] = wave_sin,
@@ -106,24 +128,80 @@ static float semi_hz(int16_t semi) {
     return powf(2, (float)(semi - A4_MIDI) / 12.) * A4_HZ;
 }
 
+static float sample_link(state_t *st, osc_link_t *link, size_t i, note_state_t *voice) {
+    wave_fn_t fn = wave_fn_table[link->osc->kind];
+    float hz = link->osc->hz != 0 ? link->osc->hz : semi_hz(voice->note + link->osc->base);
+    float step = (2 * M_PI * hz) / st->srate;
+
+    if (link->next == NULL) {
+        return link->osc->vol * fn(i * step, link->osc->bias);
+    } else {
+        float mod_samp = sample_link(st, link->next, i, voice);
+
+        switch (link->method) {
+            case MOD_AM:
+                return link->osc->vol * fn(step * i, link->osc->bias) * mod_samp;
+
+            case MOD_PM:
+                return link->osc->vol * fn(step * i + mod_samp, link->osc->bias);
+
+            case MOD_FM:
+                return link->osc->vol * fn((step * mod_samp) * i, link->osc->bias);
+
+            case MOD_BM:
+                return link->osc->vol * fn(step * i, (mod_samp + 1.0) / 2. - 0.0005);
+
+            default:
+                log_error("unknown modulation method %d", link->method);
+                return 0.0;
+        }
+    }
+}
+
 static float gen_wave(instrument_t *inst, state_t *st, size_t i, note_state_t *voice) {
+    return voice->ramp * sample_link(st, inst->links, i, voice);
+
     // work out frequency for carrier and modulator wave
-    float car_hz = semi_hz(voice->note + inst->osc1->base);
-    float mod_hz = semi_hz(voice->note + inst->osc2->base);
+    // float car_hz = inst->osc1->hz != 0 ? inst->osc1->hz : semi_hz(voice->note +
+    // inst->osc1->base); float mod_hz = inst->osc2->hz != 0 ? inst->osc2->hz : semi_hz(voice->note
+    // + inst->osc2->base);
 
-    // calculate step, used to map from real time to 0 -> PI
-    float car_step = (2 * M_PI * car_hz) / st->srate;
-    float mod_step = (2 * M_PI * mod_hz) / st->srate;
+    // // calculate step, used to map from real time to 0 -> PI
+    // float car_step = (2 * M_PI * car_hz) / st->srate;
+    // float mod_step = (2 * M_PI * mod_hz) / st->srate;
 
-    // retrieve wave functions
-    wave_fn_t car_fn = wave_fn_table[inst->osc1->kind];
-    wave_fn_t mod_fn = wave_fn_table[inst->osc2->kind];
+    // // retrieve wave functions
+    // wave_fn_t car_fn = wave_fn_table[inst->osc1->kind];
+    // wave_fn_t mod_fn = wave_fn_table[inst->osc2->kind];
 
-    // sample modulator wave
-    float mod_samp = inst->osc2->vol * mod_fn(inst->osc2, mod_step * i);
+    // // sample modulator wave
+    // float mod_samp = inst->osc2->vol * mod_fn(mod_step * i, inst->osc2->bias);
 
-    // modulate frequency of carrier wave by modulator wave sample as final asmple
-    return voice->ramp * inst->osc1->vol * car_fn(inst->osc1, car_step * i + mod_samp);
+    // // return mod_samp;
+
+    // // log_warn("inst->method = %d", inst->method);
+
+    // switch (inst->method) {
+    //     case MOD_AM:
+    //         return voice->ramp * inst->osc1->vol * car_fn(car_step * i, inst->osc1->bias) *
+    //                mod_samp;
+
+    //     case MOD_PM:
+    //         return voice->ramp * inst->osc1->vol *
+    //                car_fn(car_step * i + mod_samp, inst->osc1->bias);
+
+    //     case MOD_FM:
+    //         return voice->ramp * inst->osc1->vol *
+    //                car_fn((car_step * mod_samp) * i, inst->osc1->bias);
+
+    //     case MOD_BM:
+    //         return voice->ramp * inst->osc1->vol *
+    //                car_fn(car_step * i, (mod_samp + 1.0) / 2. - 0.0005);
+
+    //     default:
+    //         log_error("unknown modulation method %d", inst->method);
+    //         return 0.0;
+    // }
 }
 
 float inst_sample(state_t *st, instrument_t *inst) {
@@ -139,12 +217,7 @@ float inst_sample(state_t *st, instrument_t *inst) {
         }
     }
 
-    // X(6);
-
-    // float out = (sample / voices) * osc->vol;
     float out = sample * 0.5;
-
-    // log_warn("out = %f", out);
 
     return out;
 }

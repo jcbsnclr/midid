@@ -44,7 +44,7 @@ void mem_free(mem_pool_t *pool) {
 result_t mem_alloc(mem_pool_t *pool, size_t size, void **out) {
     assert(pool->buf);
 
-    if (pool->ptr + size >= pool->cap) return (result_t){.kind = ERR_OOM};
+    if (pool->ptr + size >= pool->cap) return ERR_VAL(ERR_OOM, "out of memory");
 
     size_t chunks = size / ALIGN;
     if (size % ALIGN != 0) chunks += 1;
@@ -59,7 +59,7 @@ result_t mem_alloc(mem_pool_t *pool, size_t size, void **out) {
 result_t mem_alloc_str(mem_pool_t *pool, char *str, size_t len, char **out) {
     assert(pool->buf);
 
-    if (pool->ptr + len >= pool->cap) return (result_t){.kind = ERR_OOM};
+    if (pool->ptr + len >= pool->cap) return ERR_VAL(ERR_OOM, "out of memory");
 
     char *buf;
     TRY(mem_alloc(pool, len, (void **)&buf));

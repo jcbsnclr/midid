@@ -365,7 +365,7 @@ result_t parse_osc(state_t *st, parser_t *p) {
     TALLOC(&st->pool, &osc);
 
     osc->base = 0;
-    osc->bias = 0.0;
+    osc->bias = 0.001;
     osc->kind = OSC_SIN;
     osc->vol = 0.0;
     osc->hz = 0;
@@ -459,6 +459,7 @@ result_t parse_inst(state_t *st, parser_t *p) {
     (void)st;
     (void)p;
 
+    size_t line = resolve(p->src, p->ptr);
     instrument_t *inst;
     TALLOC(&st->pool, &inst);
 
@@ -470,32 +471,67 @@ result_t parse_inst(state_t *st, parser_t *p) {
     TRY(take_name(p, &env, &env_len));
     skip_ws(p);
 
-    size_t line = resolve(p->src, name);
+    inst->env = map_get(&st->map, p->src + env, env_len, OBJ_ENV);
 
-    size_t osc1, osc1_len;
-    size_t osc2, osc2_len;
-
-    TRY(take_ident(p, &osc1, &osc1_len));
-    skip_ws(p);
-    TRY_IFC(p, '%');
-    skip_ws(p);
-    TRY(take_ident(p, &osc2, &osc2_len));
-
-    inst->osc1 = (osc_t *)map_get(&st->map, p->src + osc1, osc1_len, OBJ_OSC);
-    inst->osc2 = (osc_t *)map_get(&st->map, p->src + osc2, osc2_len, OBJ_OSC);
-    inst->env = (env_t *)map_get(&st->map, p->src + env, env_len, OBJ_ENV);
-
-    if (!inst->osc1)
-        return PARSE_ERR(
-            ERR_UNKNOWN_OBJ, line, "no such oscillator '%.*s'", osc1_len, p->src + osc1);
-    if (!inst->osc2)
-        return PARSE_ERR(
-            ERR_UNKNOWN_OBJ, line, "no such oscillator '%.*s'", osc2_len, p->src + osc2);
     if (!inst->env)
-        return PARSE_ERR(ERR_UNKNOWN_OBJ, line, "no such envelope '%.*s'", env_len, p->src + env);
+        return PARSE_ERR(ERR_UNKNOWN_OBJ, line, "no such envelope'%.*s'", env_len, p->src + env);
 
-    TRY(mem_alloc_str(&st->pool, p->src + name, name_len, &inst->name));
+    TALLOC(&st->pool, &inst->links);
+
+    inst->links->method = MOD_AM;
+    inst->links->osc = NULL;
+    inst->links->next = NULL;
+
+    osc_link_t *cur = inst->links;
+    osc_link_t *last = cur;
+    for (;;) {
+        skip_ws(p);
+        cur->next = NULL;
+
+        size_t osc, osc_len;
+        TRY(take_ident(p, &osc, &osc_len));
+
+        cur->osc = (osc_t *)map_get(&st->map, p->src + osc, osc_len, OBJ_OSC);
+        if (!cur->osc)
+            return PARSE_ERR(
+                ERR_UNKNOWN_OBJ, line, "no such oscillator '%.*s'", osc_len, p->src + osc);
+
+        if (cur != last) last->next = cur;
+
+        skip_ws(p);
+
+        if (take_ifc(p, '%'))
+            cur->method = MOD_FM;
+        else if (take_ifc(p, '+'))
+            cur->method = MOD_PM;
+        else if (take_ifc(p, '*'))
+            cur->method = MOD_AM;
+        else if (take_ifc(p, '-'))
+            cur->method = MOD_BM;
+        else
+            break;
+
+        last = cur;
+        TALLOC(&st->pool, &cur);
+
+        skip_ws(p);
+    }
+
+    cur = inst->links;
+    while (cur) {
+        printf("%s ", cur->osc->name);
+        if (cur->next) printf("%c ", mod_kind_char[cur->method]);
+
+        cur = cur->next;
+    }
+    printf("\n");
+
     TRY(map_insert(&st->map, p->src + name, name_len, inst, OBJ_INST));
+
+    char *key;
+    TRY(mem_alloc_str(&st->pool, p->src + name, name_len, &key));
+
+    inst->name = key;
 
     return OK_VAL;
 }

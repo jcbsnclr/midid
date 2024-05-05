@@ -104,8 +104,18 @@ typedef struct osc_t {
 typedef enum {
     MOD_AM,
     MOD_FM,
-    MOD_PM
+    MOD_PM,
+    MOD_BM,
+    MOD_MAX
 } mod_kind_t;
+
+extern char mod_kind_char[MOD_MAX];
+
+typedef struct osc_link_t {
+    osc_t *osc;
+    mod_kind_t method;
+    struct osc_link_t *next;
+} osc_link_t;
 
 typedef struct inst_t {
     char *name;
@@ -113,6 +123,8 @@ typedef struct inst_t {
     env_t *env;
     osc_t *osc1;
     osc_t *osc2;
+    osc_link_t *links;
+    mod_kind_t method;
 } instrument_t;
 
 typedef struct chan_t {
