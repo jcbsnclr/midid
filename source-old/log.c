@@ -6,13 +6,13 @@
 #include <string.h>
 #include <time.h>
 
-static const char *log_level_name[] = {[LOG_TRACE] = ANSI_FG_MAGENTA "TRACE" ANSI_RESET,
-                                       [LOG_DEBUG] = ANSI_FG_CYAN "DEBUG" ANSI_RESET,
-                                       [LOG_INFO] = ANSI_FG_GREEN "INFO " ANSI_RESET,
-                                       [LOG_WARN] = ANSI_FG_YELLOW "WARN " ANSI_RESET,
-                                       [LOG_ERROR] = ANSI_FG_RED "ERROR" ANSI_RESET};
+static const char *log_level_str[] = {[LOG_TRACE] = ANSI_FG_MAGENTA "TRACE" ANSI_RESET,
+                                      [LOG_DEBUG] = ANSI_FG_CYAN "DEBUG" ANSI_RESET,
+                                      [LOG_INFO] = ANSI_FG_GREEN "INFO " ANSI_RESET,
+                                      [LOG_WARN] = ANSI_FG_YELLOW "WARN " ANSI_RESET,
+                                      [LOG_ERROR] = ANSI_FG_RED "ERROR" ANSI_RESET};
 
-log_level_t filter;
+static log_level_t filter;
 
 void log_init() {
     char *level;
@@ -68,7 +68,7 @@ void log_inner(log_level_t level, const char *filename, uint32_t line, const cha
             ti->tm_min,
             2,
             ti->tm_sec,
-            log_level_name[level],
+            log_level_str[level],
             func,
             filename,
             line);

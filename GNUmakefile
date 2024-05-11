@@ -17,10 +17,13 @@
 CC?=gcc
 DBG?=gdb
 
-CSRC:=$(wildcard source/*.c)
-COBJ:=$(patsubst source/%.c, build/%.c.o, $(CSRC))
+CSRC_BIN:=$(wildcard midid/*.c)
+COBJ_BIN:=$(patsubst midid/%.c, build/midid/%.c.o, $(CSRC_BIN))
 
-CFLAGS+=-Og -g -Wall -Wextra  -Werror -Isource/ -c -MMD -fsanitize=undefined -fstack-protector-strong
+CSRC_LIB:=$(wildcard jbase/*.c)
+COBJ_LIB:=$(patsubst jbase/%.c, build/jbase/%.c.o, $(CSRC_LIB))
+
+CFLAGS+=-Og -g -Wall -Wextra  -Werror -c -MMD -fsanitize=undefined -fstack-protector-strong
 LFLAGS+=-lm -fsanitize=undefined -fstack-protector-strong
 
 DEPS:=jack
@@ -28,21 +31,33 @@ DEPS:=jack
 CFLAGS+=$(foreach dep, $(DEPS), $(shell pkg-config --cflags $(dep)))
 LFLAGS+=$(foreach dep, $(DEPS), $(shell pkg-config --libs $(dep)))
 
-BIN:=build/midid
+CFLAGS_BIN:=-Imidid/ -Idist/
+CFLAGS_LIB:=-Ijbase/ -Idist/ 
 
-build/%.c.o: source/%.c
+BIN:=build/midid/midid
+LIB:=build/jbase/libjbase.a
+
+build/midid/%.c.o: midid/%.c
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $< -o $@
+	$(CC) $(CFLAGS) $(CFLAGS_BIN) $< -o $@
 
-$(BIN): $(COBJ)
-	$(CC) $(LFLAGS) $(COBJ) -o $@
+$(BIN): $(COBJ_BIN) $(LIB)
+	$(CC) $(LFLAGS) $(COBJ_BIN) $(LIB)  -o $@
 
-.PHONY: all run debug clean
+build/jbase/%.c.o: jbase/%.c
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CFLAGS_LIB) $< -o $@
+
+$(LIB): $(COBJ_LIB)
+	mkdir -p $(dir $@)
+	ar -cvq $@ $(COBJ_LIB)
+
+.PHONY: all lib base run debug clean
 
 all: $(BIN)
 
 run: $(BIN)
-	./$(BIN) $(RUNARGS) 
+	LOG_FILTER=trace ./$(BIN) 
 
 debug: $(BIN)
 	$(DBG) -x util/gdb.txt --args $(BIN) -E "donk: 0.05s1.0 -> 0.2s0.5 -> SUST -> 0.6s0.0"   -O "o: wave=sin vol=1.0"   -I "foo donk: o * o"   -I "bar donk: o * o"
@@ -50,4 +65,5 @@ debug: $(BIN)
 clean: 
 	rm -rf build/
 
--include build/*.c.d
+-include build/midid/*.c.d 
+-include build/jbase/*.c.d
