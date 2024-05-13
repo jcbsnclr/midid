@@ -20,6 +20,9 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include <stdlib.h>
 #include "jack/types.h"
 
 //
@@ -85,6 +88,55 @@ void jb_report_result(jb_res_t info);
 // construct jb_res_t with printf-formatted message
 jb_res_t jb_err_impl(jb_err_t kind, size_t line, const char *file, const char *func, char *fmt, ...); 
 
+//
+// virtual machine
+//
+
+typedef struct {
+    enum {
+        JB_VAL_STR,
+        JB_VAL_INT,
+        JB_VAL_REF,
+
+        JB_VAL_QUOTE,
+        JB_VAL_INLINE
+    } kind;
+
+    union {
+        char *str_val;
+        int64_t int_val;
+
+        
+    };
+} jb_val_t;
+
+//
+// utilities: util.c
+//
+
+#define JB_MAX(x, y) ((x) >= (y) ? (x) : (y))
+
+typedef struct {
+	size_t len;
+	size_t cap;
+	char buf[];
+} jb_buf_hdr_t;
+
+// Get a pointer to the header of a buffer
+#define jb_buf_hdr(b) ((jb_buf_hdr_t *)((char *)(b) - offsetof(jb_buf_hdr_t, buf)))
+
+// Length, capacity and end index of a buffer
+#define jb_buf_len(b) ((b) ? jb_buf_hdr(b)->len : 0)
+#define jb_buf_cap(b) ((b) ? jb_buf_hdr(b)->cap : 0)
+#define jb_buf_end(b) ((b) + jb_buf_len(b))
+
+#define jb_buf_free(b) ((b) ? (free(jb_buf_hdr(b)), (b) = NULL) : 0)
+#define jb_buf_fit(b, n) ((n) <= jb_buf_cap(b) ? 0 : ((b) = jb_buf_grow((b), (n), sizeof(*(b)))))
+
+#define jb_buf_push(b, v) (jb_buf_fit((b), 1 + jb_buf_len(b)), (b)[jb_buf_hdr(b)->len++] = ((v)))
+#define jb_buf_pop(b, v) (jb_buf_len((b)) != 0 ? (v = (b)[--jb_buf_hdr(b)->len], true) : false)
+
+void *jb_buf_grow(const void *buf, size_t new_len, size_t elem_size);
 
 // 
 // audio client 
